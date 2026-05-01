@@ -17,11 +17,11 @@ make -C Vendor CC="xcrun clang -arch arm64"
 # Compile directly as well as providing Package.swift. This works with Command
 # Line Tools installations whose SwiftPM manifest module and dylib are mismatched.
 mkdir -p .build/release
-xcrun swiftc "${SWIFT_COMPAT[@]}" -swift-version 5 -O -parse-as-library -emit-object -emit-module \
+xcrun swiftc "${SWIFT_COMPAT[@]}" -O -parse-as-library -emit-object -emit-module \
   -module-name DisplayCore Sources/DisplayCore/*.swift \
   -o .build/release/DisplayCore.o -emit-module-path .build/release/DisplayCore.swiftmodule \
   -module-cache-path "$SWIFTPM_MODULECACHE_OVERRIDE" -target arm64-apple-macosx14.0
-xcrun swiftc "${SWIFT_COMPAT[@]}" -swift-version 5 -parse-as-library -O -I .build/release .build/release/DisplayCore.o \
+xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library -O -I .build/release .build/release/DisplayCore.o \
   Sources/DisplayMini/*.swift -framework Carbon -o .build/release/DisplayMini \
   -module-cache-path "$SWIFTPM_MODULECACHE_OVERRIDE" -target arm64-apple-macosx14.0
 APP="$PWD/dist/Display Mini.app"

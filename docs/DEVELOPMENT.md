@@ -5,6 +5,7 @@
 Use an Apple Silicon Mac with Command Line Tools and Swift 5.9 or newer. The app deployment target is macOS 14. The build script sets both the Swift executable and Objective-C helper to arm64/macOS 14, then signs the bundle locally.
 
 ```sh
+./scripts/check-toolchain.sh
 ./scripts/test.sh
 ./scripts/build.sh
 ./scripts/package.sh
@@ -34,6 +35,8 @@ On a consistent Swift installation, `swift build` and `swift run ControlChecks` 
 The workaround does not edit Command Line Tools, select another Xcode installation, or install packages. Do not add global compiler modifications to fix a local build.
 
 ## Automated checks
+
+`scripts/check-toolchain.sh` verifies compiler options for both clean and duplicate module map layouts under macOS Bash. It uses temporary fixtures and never changes the installed SDK.
 
 The assertion runner in `Tests/DisplayCoreTests` currently exercises:
 

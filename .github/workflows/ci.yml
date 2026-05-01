@@ -22,7 +22,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Check logic
-        run: ./scripts/test.sh
+        run: |
+          ./scripts/check-toolchain.sh
+          ./scripts/test.sh
       - name: Build app and bundled helper
         run: ./scripts/build.sh
       - name: Verify architecture and deployment target
