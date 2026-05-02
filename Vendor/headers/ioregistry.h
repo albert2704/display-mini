@@ -4,7 +4,7 @@
 # import <CoreGraphics/CoreGraphics.h>
 
 # ifndef MAX_DISPLAYS
-#  define MAX_DISPLAYS   4   // Set this to 2 or 4 depending on the Apple Silicon Mac you're using
+#  define MAX_DISPLAYS   64  // Match the app's CoreGraphics enumeration bound.
 # endif
 
 # define UUID_SIZE      37
@@ -19,6 +19,8 @@ typedef struct
 {
     IOAVServiceRef service;
     UInt32 chipAddress;
+    UInt32 serviceCount;
+    Boolean ambiguous;
 } DDCTransport;
 
 // Base structure for display infos
@@ -43,6 +45,7 @@ DisplayInfos*   selectDisplay(DisplayInfos *displays, int connectedDisplays, cha
 IOAVServiceRef  getDefaultDisplayAVService();
 IOAVServiceRef  getDisplayAVService(DisplayInfos* displayInfos);
 DDCTransport    getDisplayDDCTransport(DisplayInfos* displayInfos);
+Boolean         displayIdentityMatchesEDID(const DisplayInfos *display, CFDataRef edid);
 
 // External functions
 extern IOAVServiceRef   IOAVServiceCreate(CFAllocatorRef allocator);

@@ -50,6 +50,11 @@ IOReturn	performDDCReadAtChipAddress(IOAVServiceRef avService, UInt32 chipAddres
 
 DDCValue	convertI2CtoDDC(char *i2cBytes);
 
+typedef enum { DDCReplyValid, DDCReplyUnsupported, DDCReplyInvalid } DDCReplyStatus;
+DDCReplyStatus validateDDCReply(const UInt8 *data, UInt8 feature);
+void setDDCReadDelayMS(UInt32 milliseconds);
+UInt32 getDDCReadDelayMS(void);
+
 // External functions
 
 extern IOReturn	IOAVServiceReadI2C(IOAVServiceRef service, uint32_t chipAddress, uint32_t offset, void *outputBuffer, uint32_t outputBufferSize);
