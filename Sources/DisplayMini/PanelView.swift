@@ -234,6 +234,11 @@ private struct DDCSettings: View {
             }
             Text("DDC/CI may need enabling in the monitor menu. Some picture modes lock controls, and docks or adapters can block DDC. Try a direct connection. Software dimming works without DDC.")
                 .font(PanelStyle.label).foregroundStyle(.secondary)
+        }.font(.system(size: 12)).padding(18)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+          VStack(alignment: .leading, spacing: 8) {
+            Divider()
             HStack {
                 Button(device.reading ? "Checking…" : "Detect Again") { copied = false; store.retryDDC(device) }
                     .buttonStyle(.borderedProminent).disabled(!store.canConfigureDDC(device))
@@ -246,8 +251,9 @@ private struct DDCSettings: View {
             }
             Text("The report omits serial numbers and display identifiers. Nothing is uploaded.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
-        }.font(.system(size: 12)).padding(18)
-        }.frame(width: 340, height: 590)
+          }.font(.system(size: 12)).padding(.horizontal, 18).padding(.bottom, 14).background(.ultraThinMaterial)
+        }
+        .frame(width: 340, height: 590)
     }
 }
 

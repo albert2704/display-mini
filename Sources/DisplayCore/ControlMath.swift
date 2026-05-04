@@ -63,7 +63,7 @@ public enum DDCTransportKind: String, Decodable, Sendable {
         switch self {
         case .standard: return "External DDC service (0x37)"
         case .mcdp: return "MCDP HDMI bridge (0xB7)"
-        case .none: return "No external DDC service"
+        case .none: return "No verified DDC route"
         case .ambiguous: return "DDC route is ambiguous"
         }
     }
