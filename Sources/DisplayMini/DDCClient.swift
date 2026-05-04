@@ -17,55 +17,58 @@ enum DDCFailure: Error, LocalizedError, Equatable {
     }
 }
 
-private final class DDCOutputBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
-    private var overflow = false
-    func append(_ chunk: Data) {
-        lock.lock(); defer { lock.unlock() }
-        let remaining = max(0, 65536 - data.count)
-        if chunk.count > remaining { overflow = true }
-        data.append(chunk.prefix(remaining))
-    }
-    func result() -> Result<Data, DDCFailure> {
-        lock.lock(); defer { lock.unlock() }
-        return overflow ? .failure(.oversizedOutput) : .success(data)
-    }
-}
-
-/// Drains while running so a full pipe cannot block process termination.
+/// Uses a nonblocking pipe so both output collection and cleanup have a deadline.
 struct DDCCommandRunner {
     let helper: URL
     var timeout: TimeInterval = 3
     func run(_ arguments: [String]) -> Result<Data, DDCFailure> {
         guard FileManager.default.isExecutableFile(atPath: helper.path) else { return .failure(.missingHelper) }
-        let process = Process(), pipe = Pipe()
-        let finished = DispatchSemaphore(value: 0), drained = DispatchSemaphore(value: 0)
-        let output = DDCOutputBuffer()
+        let process = Process(), pipe = Pipe(), finished = DispatchSemaphore(value: 0)
         process.executableURL = helper; process.arguments = arguments
         process.standardOutput = pipe; process.standardError = pipe
         process.terminationHandler = { _ in finished.signal() }
         do { try process.run() } catch { return .failure(.launchFailed) }
         pipe.fileHandleForWriting.closeFile()
-        DispatchQueue.global(qos: .utility).async {
-            defer { try? pipe.fileHandleForReading.close(); drained.signal() }
-            while let chunk = try? pipe.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
-                output.append(chunk)
-            }
-        }
-        if finished.wait(timeout: .now() + timeout) == .timedOut {
+        defer { pipe.fileHandleForReading.closeFile() }
+        let descriptor = pipe.fileHandleForReading.fileDescriptor
+        let flags = fcntl(descriptor, F_GETFL)
+        func stop() {
+            guard process.isRunning else { return }
             process.terminate()
-            if finished.wait(timeout: .now() + 0.2) == .timedOut {
+            if finished.wait(timeout: .now() + 0.2) == .timedOut && process.isRunning {
                 kill(process.processIdentifier, SIGKILL)
                 _ = finished.wait(timeout: .now() + 0.3)
             }
-            _ = drained.wait(timeout: .now() + 0.2)
-            return .failure(.timedOut)
         }
-        guard drained.wait(timeout: .now() + 0.3) == .success else { return .failure(.timedOut) }
-        if case .failure(let failure) = output.result() { return .failure(failure) }
-        guard process.terminationStatus == 0 else { return .failure(.commandFailed) }
-        return output.result()
+        guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else {
+            stop(); return .failure(.invalidResponse)
+        }
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(max(0, timeout) * 1_000_000_000)
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 4096)
+        var exited = false, eof = false
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            // One read per iteration also bounds an endlessly writing helper.
+            let count = Darwin.read(descriptor, &buffer, buffer.count)
+            if count > 0 {
+                guard data.count + count <= 65536 else { stop(); return .failure(.oversizedOutput) }
+                data.append(contentsOf: buffer.prefix(count))
+            } else if count == 0 { eof = true }
+            else if errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR {
+                stop(); return .failure(.invalidResponse)
+            }
+            if !exited { exited = finished.wait(timeout: .now()) == .success }
+            if exited && eof {
+                return process.terminationStatus == 0 ? .success(data) : .failure(.commandFailed)
+            }
+            if count <= 0 {
+                var pollDescriptor = pollfd(fd: descriptor, events: Int16(POLLIN | POLLHUP), revents: 0)
+                _ = poll(&pollDescriptor, 1, 10)
+                // A closed pipe can precede process exit; avoid spinning on HUP.
+                if eof && !exited { exited = finished.wait(timeout: .now() + 0.01) == .success }
+            }
+        }
+        stop()
+        return .failure(.timedOut)
     }
 }
 

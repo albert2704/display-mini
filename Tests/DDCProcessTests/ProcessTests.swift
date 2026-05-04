@@ -26,6 +26,12 @@ import DisplayCore
         let start = Date()
         if case .failure(.timedOut) = DDCCommandRunner(helper: hanging, timeout: 0.1).run([]) {} else { preconditionFailure("Timeout did not fire") }
         precondition(Date().timeIntervalSince(start) < 2)
-        print("Passed 5 helper process scenarios (success, missing, rejection, excessive output, timeout).")
+        // A descendant inherits stdout after its parent exits. Collection must
+        // close its descriptor at the deadline without leaving a drain worker.
+        let inherited = try helper("inherited", "/bin/sleep 1 &\nexit 0")
+        let inheritedStart = Date()
+        if case .failure(.timedOut) = DDCCommandRunner(helper: inherited, timeout: 0.1).run([]) {} else { preconditionFailure("Inherited pipe was not bounded") }
+        precondition(Date().timeIntervalSince(inheritedStart) < 0.8)
+        print("Passed 6 helper process scenarios (success, missing, rejection, excessive output, timeout, inherited pipe).")
     }
 }

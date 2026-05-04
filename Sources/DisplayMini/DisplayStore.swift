@@ -45,8 +45,8 @@ struct DisplayMode: Identifiable {
     var revision = 0
     var brightnessRevision = 0
     var volumeRevision = 0
-    var pendingBrightness: DispatchWorkItem?
-    var pendingVolume: DispatchWorkItem?
+    @Published var pendingBrightness: DispatchWorkItem?
+    @Published var pendingVolume: DispatchWorkItem?
     var currentMode: DisplayMode? { modes.first { $0.id == currentModeID } }
     var softwareKey: String { "software.\(id)" }
     var softwareFraction: Double {
