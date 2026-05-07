@@ -189,24 +189,85 @@ private struct SliderRow<Control: View>: View {
 private struct DDCSettings: View {
     @ObservedObject var device: DisplayDevice
     @ObservedObject var store: DisplayStore
+    @State private var copied = false
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 12) {
             Label(device.name, systemImage: "display").font(PanelStyle.heading)
             Text("Monitor controls").font(.system(size: 20, weight: .semibold))
             Text("DDC/CI lets this app adjust your monitor’s own brightness and speakers.")
                 .font(.system(size: 12)).foregroundStyle(.secondary)
-            HStack { Text("Brightness"); Spacer(); Text(device.ddcBrightness ? "Supported" : "Software dimming").foregroundStyle(.secondary) }
+            HStack { Text("Brightness"); Spacer(); Text(device.forceSoftware ? "Software only" : device.nativeBrightness ? "Native + software" : device.ddcBrightness ? "DDC + software" : "Software fallback").foregroundStyle(.secondary) }
             HStack { Text("Volume"); Spacer(); Text(device.volume != nil ? "Supported" : "Unavailable").foregroundStyle(.secondary) }
             Divider()
             Toggle("Use software brightness only", isOn: Binding(get: { device.forceSoftware }, set: { store.setSoftwareOnly(device, $0) }))
-                .disabled(device.reading || device.writing)
-            if let detail = device.ddcDetail {
-                Text(detail).font(PanelStyle.label).foregroundStyle(.secondary).textSelection(.enabled)
-            }
-            Text("If controls are unavailable, enable DDC/CI in the monitor’s menu. Some docks and adapters block these commands. Try a direct USB-C, DisplayPort, or HDMI connection.")
+                .disabled(!store.canConfigureDDC(device))
+            Picker("Response timing", selection: Binding(get: { device.ddcTiming }, set: { store.setDDCTiming(device, $0) })) {
+                ForEach(DDCTiming.allCases, id: \.self) { timing in Text(timing.title).tag(timing) }
+            }.pickerStyle(.segmented).disabled(!store.canConfigureDDC(device))
+                .accessibilityLabel("Monitor response timing")
+            Text("Slow waits longer for the monitor to reply. Changing timing checks the connection without changing monitor settings.")
                 .font(PanelStyle.label).foregroundStyle(.secondary)
-            Button(device.reading ? "Checking…" : "Detect Again") { store.retryDDC(device) }
-                .buttonStyle(.borderedProminent).disabled(device.reading || device.writing)
-        }.font(.system(size: 12)).padding(18).frame(width: 290)
+            Divider()
+            HStack {
+                Text("Connection diagnostics").font(PanelStyle.heading)
+                Spacer()
+                if device.reading { ProgressView().controlSize(.small) }
+            }
+            if let date = device.lastDDCCheck {
+                Text("Last checked \(date.formatted(date: .omitted, time: .standard))\(device.reading ? " · Updating…" : "")")
+                    .font(PanelStyle.label).foregroundStyle(.secondary)
+            }
+            if let probe = device.ddcProbe {
+                Label(probe.transport.title, systemImage: probe.serviceCount == 1 ? "cable.connector" : "exclamationmark.triangle")
+                    .font(.system(size: 12, weight: .medium))
+                Text("\(probe.serviceCount) matching \(probe.serviceCount == 1 ? "service" : "services") · \(probe.delayMS) ms response wait")
+                    .font(PanelStyle.label).foregroundStyle(.secondary)
+                DiagnosticControlRow(title: "Brightness", probe: probe.brightness)
+                DiagnosticControlRow(title: "Volume", probe: probe.volume)
+            } else if let failure = device.ddcFailure {
+                Label(failure.localizedDescription, systemImage: "exclamationmark.triangle")
+                    .font(PanelStyle.label).foregroundStyle(.orange)
+            } else {
+                Text(device.reading ? "Checking the monitor’s DDC connection…" : "Run detection to inspect this connection.")
+                    .font(PanelStyle.label).foregroundStyle(.secondary)
+            }
+            Text("DDC/CI may need enabling in the monitor menu. Some picture modes lock controls, and docks or adapters can block DDC. Try a direct connection. Software dimming works without DDC.")
+                .font(PanelStyle.label).foregroundStyle(.secondary)
+        }.font(.system(size: 12)).padding(18)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+          VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            HStack {
+                Button(device.reading ? "Checking…" : "Detect Again") { copied = false; store.retryDDC(device) }
+                    .buttonStyle(.borderedProminent).disabled(!store.canConfigureDDC(device))
+                Spacer()
+                Button(copied ? "Copied" : "Copy Report") {
+                    let pasteboard = NSPasteboard.general
+                    pasteboard.clearContents()
+                    copied = pasteboard.setString(store.diagnosticReport(for: device), forType: .string)
+                }.disabled(device.reading || device.lastDDCCheck == nil)
+            }
+            Text("The report omits serial numbers and display identifiers. Nothing is uploaded.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+          }.font(.system(size: 12)).padding(.horizontal, 18).padding(.bottom, 14).background(.ultraThinMaterial)
+        }
+        .frame(width: 340, height: 590)
+    }
+}
+
+private struct DiagnosticControlRow: View {
+    let title: String
+    let probe: DDCControlProbe
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(title, systemImage: probe.status == .ok ? "checkmark.circle.fill" : "info.circle")
+                .foregroundStyle(probe.status == .ok ? Color.green : Color.secondary)
+                .font(.system(size: 12, weight: .semibold))
+            Text(probe.summary).font(PanelStyle.label).textSelection(.enabled)
+            if probe.status != .ok { Text(probe.status.guidance).font(PanelStyle.label).foregroundStyle(.secondary) }
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
+            .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
     }
 }

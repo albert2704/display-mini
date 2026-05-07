@@ -46,10 +46,16 @@ The assertion runner in `Tests/DisplayCoreTests` currently exercises:
 4. The last display protection rule.
 5. Resolution choice preserving density and refresh rate.
 6. Disconnected identity matching, changed IDs, absent devices, and ambiguous matches.
+7. Structured probes, wrong display UUIDs, invalid ranges, schema/timing mismatches, and independent control failures.
+8. Timing defaults, diagnostic report privacy, and unavailable or ambiguous routes.
 
 The fixtures use synthetic serial numbers. The tests do not call macOS configuration APIs, run the monitor helper, or assert physical screen behavior. Extend tests for a new pure rule or concrete regression; do not equate a passing parser test with hardware compatibility.
 
+`Tests/DDCProcessTests` launches temporary shell fixtures to test success, missing helper, nonzero exit, output overflow, timeout, and an inherited pipe held by a child. `Tests/HelperTests` compiles selected helper functions and tests packet validation, EDID matching, duplicate identities, selectors, and delay bounds without doing monitor I/O. `scripts/test.sh` runs all three suites. SwiftPM's `ControlChecks` runs only the pure Swift suite.
+
 ## Manual hardware validation
+
+For an explicitly authorized read-only hardware check, the bundled helper accepts `--delay-ms 50 display <UUID> probe` (or 150 for Slow). It returns schema 1 JSON. This internal output includes the requested UUID; use the app's **Copy Report** for public issue reports. Detection sends Get VCP requests and never Set VCP commands.
 
 Perform these checks only on a setup where display changes are authorized and another visible screen/recovery route is available. Record the app commit, OS, chip family, monitor model, connection path, result, and any error. Omit hardware serials and UUIDs from public reports.
 
@@ -59,6 +65,10 @@ Perform these checks only on a setup where display changes are authorized and an
 | Brightness | Correct screen changes; reported state updates; rejected writes show an error. |
 | Low brightness and recovery | Software dimming appears; the shortcut removes it and restores a readable level. |
 | Monitor volume | Physical monitor volume changes and readback confirms the value. |
+| Response timing | Switching Standard/Slow changes the reported wait to 50/150 ms and starts read-only detection. |
+| Diagnostics | Brightness and volume show separate results, attempts, ranges and the last check time. |
+| Copy Report | Copies safe diagnostic fields without UUID, serial, display name or registry/local path. |
+| Duplicate identities | Refuses DDC routing when two online screens share vendor/model/serial, even if metadata is missing on one. |
 | Resolution Revert | Previous mode returns after timeout or explicit Revert. |
 | Resolution Keep | Chosen mode remains after confirmation. |
 | Disconnect/reconnect | Windows leave the disconnected screen; reconnect resolves a fresh ID even when UUID disappears. |

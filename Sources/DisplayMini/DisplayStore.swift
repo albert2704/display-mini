@@ -27,7 +27,10 @@ struct DisplayMode: Identifiable {
     @Published var writesInFlight = 0
     var writing: Bool { writesInFlight > 0 }
     @Published var error: String?
-    @Published var ddcDetail: String?
+    @Published var ddcProbe: DDCProbe?
+    @Published var ddcFailure: DDCFailure?
+    @Published var lastDDCCheck: Date?
+    @Published var ddcTiming: DDCTiming
     @Published var modes: [DisplayMode] = []
     @Published var sliderModes: [DisplayMode] = []
     @Published var currentModeID: Int32 = 0
@@ -42,8 +45,8 @@ struct DisplayMode: Identifiable {
     var revision = 0
     var brightnessRevision = 0
     var volumeRevision = 0
-    var pendingBrightness: DispatchWorkItem?
-    var pendingVolume: DispatchWorkItem?
+    @Published var pendingBrightness: DispatchWorkItem?
+    @Published var pendingVolume: DispatchWorkItem?
     var currentMode: DisplayMode? { modes.first { $0.id == currentModeID } }
     var softwareKey: String { "software.\(id)" }
     var softwareFraction: Double {
@@ -54,6 +57,7 @@ struct DisplayMode: Identifiable {
     init(id: String, displayID: CGDirectDisplayID, name: String, builtIn: Bool) {
         self.id = id; self.displayID = displayID; self.name = name; self.builtIn = builtIn
         self.forceSoftware = UserDefaults.standard.bool(forKey: "forceSoftware.\(id)")
+        self.ddcTiming = DDCTiming(saved: UserDefaults.standard.string(forKey: "ddcTiming.\(id)"))
     }
 }
 
@@ -171,16 +175,22 @@ struct DisplayMode: Identifiable {
         guard !device.builtIn else { return }
         device.reading = true
         let revision = device.revision
-        ddc.read(uuid: device.id) { [weak self, weak device] reading in
+        ddc.read(uuid: device.id, timing: device.ddcTiming) { [weak self, weak device] result in
             guard let self, let device else { return }
             device.reading = false
             guard device.connected, device.revision == revision else { return }
-            device.ddcBrightness = reading.brightness != nil
-            device.brightnessMaximum = reading.brightnessMaximum
-            device.volumeMaximum = reading.volumeMaximum
-            device.volume = reading.volume; device.confirmedVolume = reading.volume
-            device.ddcDetail = reading.detail
-            if !device.forceSoftware && !device.nativeBrightness, let brightness = reading.brightness {
+            device.lastDDCCheck = Date()
+            switch result {
+            case .success(let probe): device.ddcProbe = probe; device.ddcFailure = nil
+            case .failure(let error): device.ddcProbe = nil; device.ddcFailure = error
+            }
+            let brightness = device.ddcProbe?.brightness.fraction
+            let volume = device.ddcProbe?.volume.fraction
+            device.ddcBrightness = brightness != nil
+            device.brightnessMaximum = device.ddcProbe?.brightness.maximum ?? 100
+            device.volumeMaximum = device.ddcProbe?.volume.maximum ?? 100
+            device.volume = volume; device.confirmedVolume = volume
+            if !device.forceSoftware && !device.nativeBrightness, let brightness {
                 device.brightnessMethod = "Combined"
                 device.brightness = ControlMath.combinedValue(hardware: brightness, software: device.softwareFraction)
                 device.confirmedBrightness = device.brightness
@@ -221,7 +231,7 @@ struct DisplayMode: Identifiable {
             } else {
                 device.writesInFlight += 1
                 let revision = device.brightnessRevision
-                self.ddc.write(uuid: device.id, attribute: "luminance", value: ControlMath.rawValue(fraction: parts.hardware, maximum: device.brightnessMaximum)) { [weak self, weak device] result in
+                self.ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "luminance", value: ControlMath.rawValue(fraction: parts.hardware, maximum: device.brightnessMaximum)) { [weak self, weak device] result in
                     guard let self, let device else { return }
                     device.writesInFlight = max(0, device.writesInFlight - 1)
                     guard device.brightnessRevision == revision, device.connected else { return }
@@ -246,7 +256,7 @@ struct DisplayMode: Identifiable {
             guard let self, let device, device.connected, let requested = device.volume else { return }
             device.pendingVolume = nil; device.writesInFlight += 1
             let revision = device.volumeRevision
-            self.ddc.write(uuid: device.id, attribute: "volume", value: ControlMath.rawValue(fraction: requested, maximum: device.volumeMaximum)) { [weak device] result in
+            self.ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "volume", value: ControlMath.rawValue(fraction: requested, maximum: device.volumeMaximum)) { [weak device] result in
                 guard let device else { return }; device.writesInFlight = max(0, device.writesInFlight - 1)
                 guard device.volumeRevision == revision, device.connected else { return }
                 if case .success = result { device.confirmedVolume = requested }
@@ -268,7 +278,40 @@ struct DisplayMode: Identifiable {
         readControls(device)
     }
 
-    func retryDDC(_ device: DisplayDevice) { guard !device.reading && !device.writing else { return }; device.error = nil; readControls(device) }
+    func canConfigureDDC(_ device: DisplayDevice) -> Bool {
+        device.connected && !device.reading && !device.writing && device.pendingBrightness == nil &&
+        device.pendingVolume == nil && !connectionBusy && pendingResolution == nil
+    }
+
+    func retryDDC(_ device: DisplayDevice) {
+        guard canConfigureDDC(device) else { return }
+        device.error = nil; readControls(device)
+    }
+
+    func setDDCTiming(_ device: DisplayDevice, _ timing: DDCTiming) {
+        guard canConfigureDDC(device), timing != device.ddcTiming else { return }
+        device.ddcTiming = timing
+        UserDefaults.standard.set(timing.rawValue, forKey: "ddcTiming.\(device.id)")
+        device.revision += 1
+        readControls(device)
+    }
+
+    func diagnosticReport(for device: DisplayDevice) -> String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"
+        var lines = ["Display Mini connection report", "App: \(version)",
+                     "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)",
+                     "Display kind: \(device.builtIn ? "Built-in" : "External")",
+                     String(format: "Vendor/model: %04X/%04X", CGDisplayVendorNumber(device.displayID), CGDisplayModelNumber(device.displayID)),
+                     "Connected: \(device.connected)", "Resolution: \(device.currentMode?.size ?? "Unavailable")",
+                     "Brightness mode: \(device.forceSoftware ? "Software only" : device.nativeBrightness ? "Native + software" : device.ddcBrightness ? "DDC + software" : "Software fallback")",
+                     "Timing profile: \(device.ddcTiming.title)"]
+        if let date = device.lastDDCCheck { lines.append("Last check: \(ISO8601DateFormatter().string(from: date))") }
+        if let probe = device.ddcProbe { lines += probe.diagnosticLines }
+        if let failure = device.ddcFailure { lines.append("Check failed: \(failure.localizedDescription)") }
+        if device.lastDDCCheck == nil { lines.append("DDC has not been checked yet.") }
+        lines.append("Serial numbers, UUIDs, display names and local paths are omitted. No data was uploaded.")
+        return lines.joined(separator: "\n")
+    }
 
     func toggleConnection(_ device: DisplayDevice, enabled: Bool) {
         guard !connectionBusy, pendingResolution == nil else { return }

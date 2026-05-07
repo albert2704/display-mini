@@ -26,8 +26,12 @@ static void printUsage() {
     " m1ddc chg volume -10          - Decreases volume by 10\n"
     " m1ddc display list            - Lists displays\n"
     " m1ddc display 1 set volume 50 - Sets volume to 50 on Display 1\n"
+    " m1ddc --delay-ms 150 display <uuid> probe - Reads brightness/volume diagnostics as JSON\n"
     "\n"
     "Commands:\n"
+    "\n"
+    " --delay-ms 50|150       - Optional first argument; chooses the bounded DDC response wait.\n"
+    " display <uuid> probe    - Reports verified route and independent control results. Sends no Set VCP commands.\n"
     "\n"
     " set luminance n         - Sets luminance (brightness) to n, where n is a number between 0 and the maximum value (usually 100).\n"
     "     contrast n          - Sets contrast to n, where n is a number between 0 and the maximum value (usually 100).\n"
@@ -102,13 +106,15 @@ static void printDisplayInfos(DisplayInfos *display, int nbDisplays, bool detail
 }
 
 // Function to handle the reading operation (get, max, chg)
-static DDCValue readingOperation(DDCTransport *transport, DDCPacket *packet) {
+static DDCValue readingOperation(DDCTransport *transport, DDCPacket *packet, NSString **status, IOReturn *ioError) {
     DDCValue dummyAttr = {-1, -1};
 
     prepareDDCRead(packet->data);
 
     IOReturn err = performDDCWriteAtChipAddress(transport->service, transport->chipAddress, packet);
     if (err) {
+        if (status) { *status = @"writeError"; }
+        if (ioError) { *ioError = err; }
         return dummyAttr;
     }
 
@@ -117,17 +123,52 @@ static DDCValue readingOperation(DDCTransport *transport, DDCPacket *packet) {
 
     err = performDDCReadAtChipAddress(transport->service, transport->chipAddress, &readPacket);
     if (err) {
+        if (status) { *status = @"readError"; }
+        if (ioError) { *ioError = err; }
         return dummyAttr;
     }
 
-    UInt8 checksum = 0x50;
-    for (int i = 0; i < 11; i++) { checksum ^= readPacket.data[i]; }
-    if (checksum != 0 || readPacket.data[0] != 0x6e ||
-        (readPacket.data[1] & 0x7f) != 8 || readPacket.data[2] != 0x02 ||
-        readPacket.data[3] != 0 || readPacket.data[4] != packet->data[2]) {
+    DDCReplyStatus reply = validateDDCReply(readPacket.data, packet->data[2]);
+    if (reply != DDCReplyValid) {
+        if (status) { *status = reply == DDCReplyUnsupported ? @"unsupported" : @"invalidReply"; }
         return dummyAttr;
     }
+    if (status) { *status = @"ok"; }
     return convertI2CtoDDC((char *)readPacket.data);
+}
+
+static NSDictionary *probeControl(DDCTransport *transport, UInt8 feature) {
+    if (transport->service == NULL) { return @{@"status": @"notAvailable", @"attempts": @0}; }
+    NSString *status = @"invalidReply";
+    IOReturn ioError = 0;
+    DDCValue value = {-1, -1};
+    int attempts = 0;
+    for (int i = 0; i < 3; i++) {
+        DDCPacket packet = createDDCPacket(feature);
+        ioError = 0;
+        value = readingOperation(transport, &packet, &status, &ioError);
+        attempts++;
+        if (value.curValue >= 0 || [status isEqualToString:@"unsupported"]) { break; }
+        if (i < 2) { usleep(20000); }
+    }
+    if (value.curValue >= 0 && (value.maxValue <= 0 || value.curValue > value.maxValue)) { status = @"invalidRange"; }
+    NSMutableDictionary *result = [@{@"status": status, @"attempts": @(attempts)} mutableCopy];
+    if (value.curValue >= 0) { result[@"current"] = @(value.curValue); result[@"maximum"] = @(value.maxValue); }
+    if (ioError != 0) { result[@"errorCode"] = @((UInt32)ioError); }
+    return result;
+}
+
+static int printProbe(DisplayInfos *display, DDCTransport *transport) {
+    NSString *route = transport->ambiguous ? @"ambiguous" : transport->service == NULL ? @"none" :
+        transport->chipAddress == DDC_CHIP_ADDRESS_MCDP29XX ? @"mcdp" : @"standard";
+    NSDictionary *result = @{@"schema": @1, @"uuid": display->uuid ?: @"",
+        @"transport": route, @"serviceCount": @(transport->serviceCount), @"delayMS": @(getDDCReadDelayMS()),
+        @"brightness": probeControl(transport, LUMINANCE), @"volume": probeControl(transport, VOLUME)};
+    NSData *json = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
+    if (!json) { return EXIT_FAILURE; }
+    writeToStdOut([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]);
+    writeToStdOut(@"\n");
+    return EXIT_SUCCESS;
 }
 
 // Function to handle the writing operation (set, chg)
@@ -183,6 +224,15 @@ int main(int argc, char** argv) {
     argv += 1;
     argc -= 1;
 
+    if (argc >= 1 && STR_EQ(argv[0], "--delay-ms")) {
+        if (argc < 2 || (!STR_EQ(argv[1], "50") && !STR_EQ(argv[1], "150"))) {
+            writeToStdOut(@"Read delay must be 50 or 150 milliseconds.\n");
+            return EXIT_FAILURE;
+        }
+        setDDCReadDelayMS((UInt32)atoi(argv[1]));
+        argv += 2; argc -= 2;
+    }
+
 	if (argc < 2) {
 		printUsage();
 		return argc && STR_EQ(argv[0], "help") ? 1 : 0;
@@ -194,11 +244,11 @@ int main(int argc, char** argv) {
         verbose = true;
     }
 
-    DisplayInfos displayInfos[MAX_DISPLAYS];
+    DisplayInfos displayInfos[MAX_DISPLAYS] = {0};
     DisplayInfos *selectedDisplay = NULL;
 
     // Display lister and selection
-    if (STR_EQ(argv[0], "display")) {
+    if (argc >= 2 && STR_EQ(argv[0], "display")) {
 
         int connectedDisplays = getOnlineDisplayInfos(displayInfos);
         if (connectedDisplays == 0) {
@@ -258,6 +308,10 @@ int main(int argc, char** argv) {
         transport = getDisplayDDCTransport(selectedDisplay);
     }
 
+    if (argc == 1 && STR_EQ(argv[0], "probe") && selectedDisplay != NULL && selectedDisplay->uuid != NULL) {
+        return printProbe(selectedDisplay, &transport);
+    }
+
     if (transport.service == NULL) {
         writeToStdOut(@"Could not find a suitable external display.\n");
         return EXIT_FAILURE;
@@ -285,7 +339,7 @@ int main(int argc, char** argv) {
     // Reading current
     if (!STR_EQ(argv[0], "set")) {
         for (int attempt = 0; attempt < 3; ++attempt) {
-            displayAttr = readingOperation(&transport, &packet);
+            displayAttr = readingOperation(&transport, &packet, NULL, NULL);
             if (displayAttr.curValue != -1) { break; }
             usleep(20000);
         }

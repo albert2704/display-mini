@@ -1,5 +1,15 @@
 # User guide
 
+## Connection diagnostics and response timing
+
+Open **Monitor Controls…** on an external display. The panel shows its current brightness method and whether monitor volume has responded. **Standard** waits 50 ms for DDC replies; **Slow** waits 150 ms and can help slower monitors. Timing is remembered for each display. Selecting a profile starts a read-only check without changing monitor settings.
+
+The diagnostics section lists the verified DDC route, matching service count, response wait and last check time. Brightness and volume have separate outcomes. **Responding** includes the raw current/maximum and attempts. **Not supported by monitor** means an explicit unsupported reply; **No valid reply** means communication failed and does not establish whether the feature exists.
+
+**Detect Again** repeats the bounded check. **Copy Report** puts the latest report on your clipboard, omitting serials, UUIDs, display names, registry paths and local paths. It includes app/macOS version, vendor/model codes, resolution, timing, route and control outcomes. Nothing is uploaded. Copying replaces the current clipboard contents.
+
+Software dimming remains available when the connection cannot be uniquely matched. Two monitors reporting the same vendor/model/serial cannot safely be distinguished by this release. A readable, valid EDID is required for DDC routing; timing changes cannot fix a dock that does not forward DDC.
+
 ## The panel
 
 Click the monitor icon in the menu bar. Each known display has a title row with its name and connection switch. Built in displays show brightness and resolution. External displays also show monitor controls and volume.
