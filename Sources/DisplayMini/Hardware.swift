@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import Darwin
 import DisplayCore
+import IOKit
 
 enum DisplayFailure: LocalizedError {
     case message(String)
@@ -28,6 +29,14 @@ final class NativeDisplays {
     }
 
     var canConnect: Bool { symbol(skyLight, ["SLSConfigureDisplayEnabled", "CGSConfigureDisplayEnabled"], as: SetEnabled.self) != nil }
+
+    var lidClosed: Bool? {
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard root != 0 else { return nil }
+        defer { IOObjectRelease(root) }
+        return IORegistryEntryCreateCFProperty(root, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? Bool
+    }
 
     func displayIDs() -> [CGDirectDisplayID] {
         var ids = [UInt32](repeating: 0, count: 64), count: UInt32 = 0
