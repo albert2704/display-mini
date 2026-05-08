@@ -12,6 +12,7 @@
 
 ### Fixed
 
+* Built in displays disabled by Display Mini now recover automatically after the last active external screen is unplugged. Recovery retries during display enumeration changes and waits while the lid is closed or the Mac is asleep.
 * Discovery truncation after four online displays and unsafe missing metadata.
 * Ambiguous service and duplicate monitor identity selection.
 * Output pipe deadlocks, oversized helper output and reader lifetime after timeout.

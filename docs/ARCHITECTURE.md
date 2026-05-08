@@ -75,6 +75,8 @@ SkyLight's `SLSConfigureDisplayEnabled` or `CGSConfigureDisplayEnabled` is resol
 
 A switch changes desktop membership, not the DDC physical power state. Recovery and shutdown reconnect only owned disconnections. Screen changes and wake schedule a debounced refresh.
 
+Before refreshing, the store checks fresh OS connection state for a built in panel in `ownedDisconnects`. If no online, active external screen remains and IOPMrootDomain reports an open lid (`AppleClamshellState == false`), it attempts to reconnect that panel. Sleep and in flight connection transactions suppress the attempt. A two second timer runs only while the store retains an owned built in disconnection, covering missed AppKit notifications and temporary missing IDs. Attempts are spaced at least two seconds apart; normal DDC reads are not polled by this timer. Ownership is removed only after the panel is online and active. Shutdown invalidates the timer and suppresses queued recovery work. Synthetic tests cover unplug transitions, another remaining monitor, successful activation, lid state, sleep, ownership and transaction guards.
+
 ## Stored data
 
 Domain: `dev.albert.DisplayMini` in local UserDefaults.
