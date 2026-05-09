@@ -79,6 +79,9 @@ struct DisplayMode: Identifiable {
     private var shuttingDown = false
     private var nextRecoveryAttempt = Date.distantPast
     private var automaticRecoveryError: String?
+    private var lastRecoveryTrace: String?
+    private var recoveryActivity: NSObjectProtocol?
+    private var physicalRecoveryAvailable = false
     private var connectionRevision = 0
     private var pendingResolution: (uuid: String, original: CGDisplayMode, requested: CGDisplayMode)?
     private var ownedDisconnects: Set<String> {
@@ -159,9 +162,15 @@ struct DisplayMode: Identifiable {
     }
 
     private func recoverBuiltInIfNeeded() {
-        guard !shuttingDown, !sleeping, !connectionBusy else { return }
+        guard !shuttingDown, !sleeping, !connectionBusy else {
+            traceRecovery("paused: shutdown=\(shuttingDown) sleep=\(sleeping) busy=\(connectionBusy)")
+            return
+        }
         let owned = ownedDisconnects
-        guard displays.contains(where: { $0.builtIn && owned.contains($0.id) }) else { return }
+        guard displays.contains(where: { $0.builtIn && owned.contains($0.id) }) else {
+            traceRecovery("no owned built-in row: owned=\(owned.count) rows=\(displays.count)")
+            return
+        }
         // Query the OS afresh. Published rows may still describe the unplugged screen.
         var states = native.displayIDs().map { id in
             let uuid = native.uuid(id)
@@ -173,28 +182,47 @@ struct DisplayMode: Identifiable {
         for device in displays where device.builtIn && owned.contains(device.id) && !states.contains(where: { $0.uuid == device.id }) {
             states.append(.init(uuid: device.id, builtIn: true, online: false, active: false))
         }
-        let candidates = BuiltInDisplayRecovery.candidates(states, owned: owned, lidClosed: native.lidClosed,
-                                                          sleeping: sleeping, connectionBusy: connectionBusy)
+        let lid = native.lidClosed
+        let links = native.activeExternalLinkCount
+        let candidates = BuiltInDisplayRecovery.candidates(states, owned: owned, lidClosed: lid,
+            sleeping: sleeping, connectionBusy: connectionBusy,
+            physicalExternalLost: physicalRecoveryAvailable && links == 0)
+        traceRecovery("check: lid=\(lid.map(String.init) ?? "unknown") activeExternal=\(states.filter { !$0.builtIn && $0.online && $0.active }.count) physicalLinks=\(links.map(String.init) ?? "unknown") hardwareRecovery=\(physicalRecoveryAvailable) ownedPanels=\(states.filter { $0.builtIn && owned.contains($0.uuid) }.count) candidates=\(candidates.count)")
         guard !candidates.isEmpty, Date() >= nextRecoveryAttempt else { return }
         nextRecoveryAttempt = Date().addingTimeInterval(2)
         for uuid in candidates {
             do {
                 try native.setConnected(uuid: uuid, enabled: true)
+                traceRecovery("enable transaction accepted")
                 // Keep ownership until a later refresh confirms that the panel is active.
                 scheduleRefresh()
             } catch {
                 let error = "Could not automatically restore the built-in display. Recovery will retry. \(error.localizedDescription)"
                 automaticRecoveryError = error; message = error
+                traceRecovery("enable failed: \(error)")
             }
         }
+    }
+
+    private func traceRecovery(_ event: String) {
+        guard event != lastRecoveryTrace else { return }
+        lastRecoveryTrace = event
+        var events = UserDefaults.standard.stringArray(forKey: "recoveryTrace") ?? []
+        events.append("\(ISO8601DateFormatter().string(from: Date())) \(event)")
+        UserDefaults.standard.set(Array(events.suffix(40)), forKey: "recoveryTrace")
     }
 
     private func updateRecoveryTimer() {
         guard displays.contains(where: { $0.builtIn && ownedDisconnects.contains($0.id) }) else {
             recoveryTimer?.invalidate(); recoveryTimer = nil
+            if let recoveryActivity { ProcessInfo.processInfo.endActivity(recoveryActivity) }
+            recoveryActivity = nil
+            physicalRecoveryAvailable = false
             return
         }
         guard recoveryTimer == nil else { return }
+        recoveryActivity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "Restore the built-in display when an external monitor is unplugged")
         // A fallback is needed when unplugging the last screen produces no AppKit event.
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshForRecovery() }
@@ -202,10 +230,15 @@ struct DisplayMode: Identifiable {
         timer.tolerance = 0.3
         recoveryTimer = timer
         RunLoop.main.add(timer, forMode: .common)
+        traceRecovery("recovery timer started")
     }
 
     private func refreshForRecovery() {
-        guard !shuttingDown, !sleeping else { return }
+        UserDefaults.standard.set(ISO8601DateFormatter().string(from: Date()), forKey: "recoveryHeartbeat")
+        guard !shuttingDown, !sleeping else {
+            traceRecovery("timer paused: shutdown=\(shuttingDown) sleep=\(sleeping)")
+            return
+        }
         recoverBuiltInIfNeeded()
         // Normal control reads are left to screen notifications and explicit refresh.
         // A successful asynchronous enable is confirmed even if AppKit emits no event.
@@ -395,7 +428,15 @@ struct DisplayMode: Identifiable {
         device.revision += 1; device.brightnessRevision += 1; device.volumeRevision += 1
         device.pendingBrightness?.cancel(); device.pendingBrightness = nil
         device.pendingVolume?.cancel(); device.pendingVolume = nil
-        if !enabled { ownedDisconnects.insert(device.id); dimming.remove(device.id); updateRecoveryTimer() }
+        if !enabled {
+            if device.builtIn {
+                let externalCount = native.displayIDs().filter { CGDisplayIsBuiltin($0) == 0 && CGDisplayIsOnline($0) != 0 && CGDisplayIsActive($0) != 0 }.count
+                // Only trust hardware loss when these ports cover the active replacement screens.
+                physicalRecoveryAvailable = externalCount > 0 && native.activeExternalLinkCount == externalCount
+            }
+            ownedDisconnects.insert(device.id); dimming.remove(device.id); updateRecoveryTimer()
+        }
+        traceRecovery("connection request: builtin=\(device.builtIn) enable=\(enabled)")
         do {
             try native.setConnected(uuid: device.id, enabled: enabled)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak device] in
@@ -497,6 +538,8 @@ struct DisplayMode: Identifiable {
         shuttingDown = true
         refreshWork?.cancel()
         recoveryTimer?.invalidate(); recoveryTimer = nil
+        if let recoveryActivity { ProcessInfo.processInfo.endActivity(recoveryActivity) }
+        recoveryActivity = nil
         cancelControlEdits()
         for uuid in ownedDisconnects {
             if (try? native.setConnected(uuid: uuid, enabled: true)) != nil { ownedDisconnects.remove(uuid) }

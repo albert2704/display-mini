@@ -26,7 +26,43 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         suite.testUnverifiedAndAmbiguousRoutesNeverEnableControls()
         suite.testUnplugRestoresOnlyTheOwnedBuiltInPanel()
         suite.testUnplugRecoveryRespectsLidSleepAndTransactions()
-        print("Passed 12 control tests (\(checks) assertions).")
+        suite.testHardwareUnplugOverridesStaleWindowServerState()
+        suite.testHardwareLinkEventsRejectUnknownAndRespectNewestState()
+        print("Passed 14 control tests (\(checks) assertions).")
+    }
+
+    func testHardwareUnplugOverridesStaleWindowServerState() {
+        let panel = DisplayConnectionState(uuid: "panel", builtIn: true, online: false, active: false)
+        let staleMonitor = DisplayConnectionState(uuid: "monitor", builtIn: false, online: true, active: true)
+        let states = [panel, staleMonitor]
+        XCTAssertTrue(BuiltInDisplayRecovery.candidates(states, owned: ["panel"], lidClosed: false,
+            sleeping: false, connectionBusy: false).isEmpty)
+        XCTAssertEqual(BuiltInDisplayRecovery.candidates(states, owned: ["panel"], lidClosed: false,
+            sleeping: false, connectionBusy: false, physicalExternalLost: true), ["panel"])
+        XCTAssertTrue(BuiltInDisplayRecovery.candidates(states, owned: ["panel"], lidClosed: true,
+            sleeping: false, connectionBusy: false, physicalExternalLost: true).isEmpty)
+        XCTAssertTrue(BuiltInDisplayRecovery.candidates(states, owned: [], lidClosed: false,
+            sleeping: false, connectionBusy: false, physicalExternalLost: true).isEmpty)
+    }
+
+    func testHardwareLinkEventsRejectUnknownAndRespectNewestState() {
+        func event(_ payload: [String: Any]) -> [String: Any] { ["EventPayload": payload] }
+        let staleHints: [String: Any] = ["MaxW": 2560, "MaxH": 1440]
+        XCTAssertNil(ExternalLinkState.active(hints: nil, events: []))
+        XCTAssertNil(ExternalLinkState.active(hints: nil, events: [event(["State": "Registered", "Value": 1])]))
+        XCTAssertNil(ExternalLinkState.active(hints: nil, events: [event(["Action": "Unrecognized"])]))
+        XCTAssertEqual(ExternalLinkState.active(hints: staleHints, events: []), true)
+        XCTAssertEqual(ExternalLinkState.active(hints: ["Valid": false], events: []), false)
+        XCTAssertEqual(ExternalLinkState.active(hints: staleHints,
+            events: [event(["Action": "Plug"]), event(["Action": "Unplug"])]), false)
+        XCTAssertEqual(ExternalLinkState.active(hints: nil,
+            events: [event(["Action": "Unplug"]), event(["Action": "Plug"])]), true)
+        XCTAssertEqual(ExternalLinkState.active(hints: staleHints,
+            events: [event(["State": "SinkActive", "Value": 0])]), false)
+        XCTAssertEqual(ExternalLinkState.active(hints: nil,
+            events: [event(["State": "SinkActive", "Value": 1])]), true)
+        XCTAssertNil(ExternalLinkState.active(hints: nil,
+            events: [event(["State": "SinkActive", "Value": "bad"])]))
     }
 
     func testUnplugRestoresOnlyTheOwnedBuiltInPanel() {
