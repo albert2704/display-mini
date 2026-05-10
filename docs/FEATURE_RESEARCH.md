@@ -21,3 +21,7 @@ DisplayBuddy also documents Samsung Smart control over Wi-Fi. That would require
 * Manual resolution of duplicate monitor identities, only after a stable port mapping can be tested across reconnects.
 
 These are candidates, not promises or implemented features. The current update focuses on the compatibility and diagnostics requested by the user.
+
+## Cable removal recovery investigation
+
+[Clamless helper source](https://github.com/TCXM/clamless/blob/main/src/helper/clamless-display.c) separates active WindowServer screens from physical port state using display hints and hardware events. This informed Display Mini's independent hardware port reader after a live unplug test produced no screen transition. Display Mini parses a limited set of connection events, retains unknown states, and gates hardware recovery on coverage of the active replacement screens. Clamless also has separate panel power controls; those are not implemented here.

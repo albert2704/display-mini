@@ -67,6 +67,8 @@ If you turn off the built in screen using Display Mini, unplugging the last acti
 
 Automatic recovery requires Display Mini to be running. If the lid state cannot be read, use **Restore Displays** or the recovery shortcut instead.
 
+Recovery also checks supported hardware port events because macOS can temporarily keep an unplugged screen in its active display list. Hardware based recovery is used only when those ports covered all active external screens before you disabled the built in screen. The recovery task prevents App Nap from delaying its checks; normal Mac sleep remains available.
+
 macOS may stop returning a UUID for a disconnected screen. The app retains its vendor, model, and serial identity and checks current display IDs. If the match is ambiguous, it does not guess which screen to operate.
 
 ## Footer and recovery
