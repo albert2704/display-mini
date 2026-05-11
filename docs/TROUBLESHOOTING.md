@@ -35,6 +35,8 @@ Combined slider values include a software range and do not map one to one to phy
 
 ## A screen will not reconnect
 
+If you disabled the MacBook screen using Display Mini and then unplugged the last external screen, the app attempts to restore the MacBook screen automatically with the lid open. Allow a few seconds for macOS to update its display list. The app must still be running. Recovery pauses for a closed lid, sleep, an unreadable lid state, or another active external screen.
+
 1. Use its switch or Control + Option + Command + R.
 2. Read the error and confirm the screen is physically connected.
 3. Reconnect its cable if macOS no longer exposes it.
