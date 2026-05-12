@@ -1,5 +1,15 @@
 import Foundation
 
+public enum MonitorAudio {
+    public static func rememberedVolume(confirmed: Double?, previous: Double?) -> Double? {
+        [confirmed, previous].compactMap { $0 }.first { $0.isFinite && $0 > 0 && $0 <= 1 }
+    }
+
+    public static func toggledVolume(current: Double, remembered: Double?) -> Double {
+        current > 0 ? 0 : (rememberedVolume(confirmed: nil, previous: remembered) ?? 0.25)
+    }
+}
+
 public enum DDCTiming: String, CaseIterable, Sendable {
     case standard, slow
     public init(saved: String?) { self = saved.flatMap(Self.init(rawValue:)) ?? .standard }

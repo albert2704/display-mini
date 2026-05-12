@@ -28,7 +28,21 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         suite.testUnplugRecoveryRespectsLidSleepAndTransactions()
         suite.testHardwareUnplugOverridesStaleWindowServerState()
         suite.testHardwareLinkEventsRejectUnknownAndRespectNewestState()
-        print("Passed 14 control tests (\(checks) assertions).")
+        suite.testMuteRestoresOnlyConfirmedValidVolume()
+        print("Passed 15 control tests (\(checks) assertions).")
+    }
+
+    func testMuteRestoresOnlyConfirmedValidVolume() {
+        XCTAssertEqual(MonitorAudio.toggledVolume(current: 0.8, remembered: nil), 0)
+        XCTAssertEqual(MonitorAudio.toggledVolume(current: 0, remembered: 0.8), 0.8)
+        XCTAssertEqual(MonitorAudio.rememberedVolume(confirmed: 0, previous: 0.8), 0.8)
+        XCTAssertEqual(MonitorAudio.rememberedVolume(confirmed: 0.4, previous: 0.8), 0.4)
+        // A failed write does not produce a confirmed value, so the last good level survives.
+        XCTAssertEqual(MonitorAudio.rememberedVolume(confirmed: nil, previous: 0.8), 0.8)
+        for invalid in [Double.nan, Double.infinity, -1, 0, 1.1] {
+            XCTAssertEqual(MonitorAudio.toggledVolume(current: 0, remembered: invalid), 0.25)
+        }
+        XCTAssertEqual(MonitorAudio.toggledVolume(current: 0, remembered: nil), 0.25)
     }
 
     func testHardwareUnplugOverridesStaleWindowServerState() {

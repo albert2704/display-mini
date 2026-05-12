@@ -115,9 +115,19 @@ private struct DisplayCard: View {
                     }
                     if !device.builtIn {
                         SliderRow(label: "Volume", valueText: device.volume.map { "\(Int(($0 * 100).rounded()))%" } ?? (device.reading ? "Reading…" : "Unavailable"), icon: "speaker.wave.2.fill") {
+                          HStack(spacing: 8) {
                             CompactSlider(value: Binding(get: { device.volume ?? 0 }, set: { store.setVolume(device, $0) }), accessibilityName: "\(device.name) volume")
                                 .frame(height: 22)
                                 .disabled(device.volume == nil || device.reading || busy)
+                            Button { store.toggleMute(device) } label: {
+                                Image(systemName: device.confirmedVolume == 0 ? "speaker.slash.fill" : "speaker.wave.2")
+                                    .frame(width: 22, height: 22)
+                            }.buttonStyle(.plain)
+                                .foregroundStyle(device.confirmedVolume == 0 ? PanelStyle.accent : .secondary)
+                                .disabled(device.volume == nil || !store.canConfigureDDC(device))
+                                .accessibilityLabel("\(device.confirmedVolume == 0 ? "Unmute" : "Mute") \(device.name)")
+                                .help(device.confirmedVolume == 0 ? "Restore previous volume (25% if unknown)" : "Mute monitor speakers")
+                          }
                         }
                     }
                     VStack(spacing: 0) {
