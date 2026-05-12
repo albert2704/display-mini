@@ -13,6 +13,7 @@ enum PanelStyle {
 
 struct PanelView: View {
     @ObservedObject var store: DisplayStore
+    @State private var showPresets = false
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -46,6 +47,10 @@ struct PanelView: View {
                         .buttonStyle(.plain).accessibilityLabel("Dismiss message")
                 }.padding(10).background(Color.orange.opacity(0.12))
             }
+            if let name = store.applyingPresetName {
+                HStack { ProgressView().controlSize(.small); Text("Applying “\(name)”…").font(PanelStyle.label) }
+                    .padding(10)
+            }
             if store.unresolvedRecovery && store.pendingResolutionName == nil {
                 Button("Keep current resolution") { store.keepCurrentResolution() }
                     .font(PanelStyle.label).padding(.bottom, 8)
@@ -54,10 +59,14 @@ struct PanelView: View {
             HStack(spacing: 12) {
                 Text("Display Mini").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
                 Spacer()
+                Button { showPresets.toggle() } label: { Image(systemName: "slider.horizontal.3") }
+                    .help("Brightness and volume presets").accessibilityLabel("Presets")
+                    .popover(isPresented: $showPresets, arrowEdge: .trailing) { PresetsView(store: store) }
                 Button { store.restoreDisplays() } label: { Image(systemName: "arrow.uturn.backward") }
                     .help("Restore displays · ⌃⌥⌘R").accessibilityLabel("Restore Displays")
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                     .help("Refresh displays").accessibilityLabel("Refresh Displays")
+                    .disabled(store.applyingPresetName != nil)
                 Button { NSApplication.shared.terminate(nil) } label: { Image(systemName: "power") }
                     .help("Quit Display Mini").accessibilityLabel("Quit Display Mini")
             }.font(.system(size: 12)).buttonStyle(.plain).padding(.horizontal, 14).padding(.vertical, 11)
@@ -70,7 +79,8 @@ struct PanelView: View {
     private var panelHeight: CGFloat {
         let cards = store.displays.reduce(CGFloat(0)) { $0 + ($1.connected ? ($1.builtIn ? 139 : 211) : 78) + ($1.error == nil ? 0 : 50) }
         return min(730, max(180, cards + CGFloat(max(0, store.displays.count - 1)) * PanelStyle.gap + 52)
-                   + (store.pendingResolutionName == nil ? 0 : 108) + (store.message == nil ? 0 : 65))
+                   + (store.pendingResolutionName == nil ? 0 : 108) + (store.message == nil ? 0 : 65)
+                   + (store.applyingPresetName == nil ? 0 : 40))
     }
 }
 
@@ -78,7 +88,7 @@ private struct DisplayCard: View {
     @ObservedObject var device: DisplayDevice
     @ObservedObject var store: DisplayStore
     @State private var showDDC = false
-    private var busy: Bool { store.connectionBusy || store.pendingResolutionName != nil }
+    private var busy: Bool { store.controlsBusy }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 7) {

@@ -10,6 +10,132 @@ public enum MonitorAudio {
     }
 }
 
+public struct PresetDisplay: Codable, Equatable, Sendable {
+    public let uuid: String
+    public let name: String
+    public let brightness: Double
+    public let volume: Double?
+    public init(uuid: String, name: String, brightness: Double, volume: Double?) {
+        self.uuid = uuid; self.name = name; self.brightness = brightness; self.volume = volume
+    }
+    fileprivate var isValid: Bool {
+        UUID(uuidString: uuid) != nil && !name.isEmpty && name.count <= 256 &&
+        brightness.isFinite && (0...1).contains(brightness) &&
+        (volume.map { $0.isFinite && (0...1).contains($0) } ?? true)
+    }
+}
+
+public struct DisplayPreset: Codable, Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public var name: String
+    public let displays: [PresetDisplay]
+    public init(id: UUID = UUID(), name: String, displays: [PresetDisplay]) {
+        self.id = id; self.name = name; self.displays = displays
+    }
+}
+
+public enum PresetValidationError: LocalizedError {
+    case invalidName, duplicateName, limit, invalidData
+    public var errorDescription: String? {
+        switch self {
+        case .invalidName: return "Use a preset name with 1–40 characters."
+        case .duplicateName: return "A preset with this name already exists."
+        case .limit: return "You can save up to 12 presets. Delete one to make room."
+        case .invalidData: return "Saved presets could not be read. The original data has been kept."
+        }
+    }
+}
+
+public struct PresetLibrary: Codable, Equatable, Sendable {
+    public let schema: Int
+    public private(set) var presets: [DisplayPreset]
+    public init() { schema = 1; presets = [] }
+
+    public static func decode(_ data: Data) throws -> PresetLibrary {
+        guard data.count <= 1_048_576, let library = try? JSONDecoder().decode(Self.self, from: data),
+              library.schema == 1, library.presets.count <= 12,
+              Set(library.presets.map(\.id)).count == library.presets.count else { throw PresetValidationError.invalidData }
+        var names = Set<String>()
+        for preset in library.presets {
+            guard (try? normalizedName(preset.name)) == preset.name,
+                  names.insert(preset.name.lowercased()).inserted,
+                  validDisplays(preset.displays) else { throw PresetValidationError.invalidData }
+        }
+        return library
+    }
+
+    public mutating func save(name: String, displays: [PresetDisplay]) throws {
+        guard presets.count < 12 else { throw PresetValidationError.limit }
+        let name = try uniqueName(name)
+        guard Self.validDisplays(displays) else { throw PresetValidationError.invalidData }
+        presets.append(.init(name: name, displays: displays))
+    }
+
+    public mutating func rename(id: UUID, name: String) throws {
+        let name = try uniqueName(name, excluding: id)
+        guard let index = presets.firstIndex(where: { $0.id == id }) else { return }
+        presets[index].name = name
+    }
+    public mutating func delete(id: UUID) { presets.removeAll { $0.id == id } }
+    private static func normalizedName(_ value: String) throws -> String {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...40).contains(name.count), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw PresetValidationError.invalidName
+        }
+        return name
+    }
+    private func uniqueName(_ value: String, excluding id: UUID? = nil) throws -> String {
+        let name = try Self.normalizedName(value)
+        guard !presets.contains(where: { $0.id != id && $0.name.lowercased() == name.lowercased() }) else {
+            throw PresetValidationError.duplicateName
+        }
+        return name
+    }
+    private static func validDisplays(_ displays: [PresetDisplay]) -> Bool {
+        (1...64).contains(displays.count) && displays.allSatisfy(\.isValid) &&
+        Set(displays.map { $0.uuid.uppercased() }).count == displays.count
+    }
+}
+
+public struct PresetPlan: Sendable {
+    public enum Control: String, Sendable { case brightness, volume }
+    public struct Step: Identifiable, Sendable {
+        public let id = UUID()
+        public let displayUUID: String
+        public let control: Control
+        public let value: Double
+    }
+    public let steps: [Step]
+    public let skippedControls: Int
+    public init(preset: DisplayPreset, available: [String: Bool]) {
+        var steps: [Step] = []; var skipped = 0
+        for display in preset.displays {
+            guard let supportsVolume = available[display.uuid] else {
+                skipped += display.volume == nil ? 1 : 2; continue
+            }
+            steps.append(.init(displayUUID: display.uuid, control: .brightness, value: display.brightness))
+            if let volume = display.volume {
+                if supportsVolume { steps.append(.init(displayUUID: display.uuid, control: .volume, value: volume)) }
+                else { skipped += 1 }
+            }
+        }
+        self.steps = steps; self.skippedControls = skipped
+    }
+}
+
+/// Duplicate or stale callbacks cannot complete a later batch.
+public struct PresetProgress {
+    public let token = UUID()
+    public private(set) var pending: Set<UUID>
+    public private(set) var failures = 0
+    public init(steps: [PresetPlan.Step]) { pending = Set(steps.map(\.id)) }
+    @discardableResult public mutating func finish(token: UUID, step: UUID, success: Bool) -> Bool {
+        guard token == self.token, pending.remove(step) != nil else { return false }
+        if !success { failures += 1 }
+        return true
+    }
+}
+
 public enum DDCTiming: String, CaseIterable, Sendable {
     case standard, slow
     public init(saved: String?) { self = saved.flatMap(Self.init(rawValue:)) ?? .standard }
