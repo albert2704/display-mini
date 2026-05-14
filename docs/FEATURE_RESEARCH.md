@@ -1,6 +1,6 @@
 # Feature research
 
-Reviewed 2026-10-09. This comparison uses public product documentation as inspiration. It does not imply feature parity, shared implementation, or tested compatibility with every monitor those apps support.
+Reviewed 2026-10-10. This comparison uses public product documentation as inspiration. It does not imply feature parity, shared implementation, or tested compatibility with every monitor those apps support.
 
 ## Inspiration used in this update
 
@@ -13,14 +13,20 @@ Reviewed 2026-10-09. This comparison uses public product documentation as inspir
 
 DisplayBuddy also documents Samsung Smart control over Wi-Fi. That would require network protocols, device pairing and separate testing; it is outside the current local DDC implementation. BetterDisplay exposes more low-level timing and control options than this app. Two bounded profiles keep this update understandable while preserving safe reads and confirmed writes.
 
+## Everyday controls added in 0.3.0
+
+[DisplayBuddy presets](https://displaybuddy.app/docs/presets) and its [keyboard shortcut guide](https://displaybuddy.app/docs/keyboard-shortcuts) informed named snapshots and quick activation. Display Mini saves confirmed brightness/volume for connected screens, matches by UUID, and exposes the first three presets through registered modifier shortcuts. The user explicitly selected the screen under the pointer for brightness, volume and mute keys.
+
+Mute is implemented as confirmed volume zero with last-volume restore through the existing DDC path. This is Display Mini's own implementation choice, not a claim about another app's internals. Carbon registered hotkeys extend the existing recovery mechanism and avoid broad keyboard interception.
+
 ## Practical candidates for later
 
 * Wake settling and per-display retry policy, to address monitors that become ready later than macOS.
-* Saved brightness/volume presets and optional synchronization across selected screens.
-* Keyboard shortcuts and monitor mute with a volume-zero fallback.
+* Optional synchronization across selected screens and preset scheduling.
+* Custom shortcut bindings and carefully scoped media-key support.
 * Manual resolution of duplicate monitor identities, only after a stable port mapping can be tested across reconnects.
 
-These are candidates, not promises or implemented features. The current update focuses on the compatibility and diagnostics requested by the user.
+These are candidates, not promises or implemented features. Implemented features are listed above; broader automation remains outside this update.
 
 ## Cable removal recovery investigation
 

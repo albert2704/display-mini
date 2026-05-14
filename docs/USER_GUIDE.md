@@ -37,6 +37,40 @@ Volume controls the monitor's speakers through DDC VCP code `0x62`. It does not 
 
 macOS still needs the correct audio output, and the cable must carry audio. Brightness support does not guarantee volume support. If the monitor cannot report current volume and a valid maximum, the slider is unavailable.
 
+## Mute
+
+Click the speaker button beside an external display's volume slider to mute it. Display Mini writes volume zero and waits for monitor confirmation. Click again to restore the last confirmed nonzero volume for that display. The remembered value survives restarting the app. If no previous value is known, unmute uses 25%.
+
+A failed write shows an error and restores the previous displayed value. Moving the volume above zero also leaves mute. The button waits for pending control changes to finish. This controls monitor speakers through volume, not a monitor-specific mute command or the Mac's audio output.
+
+## Presets
+
+Open **Presets** using the sliders icon in the footer. Set your brightness and monitor volume first, enter a name such as Work or Evening, and choose **Save Current**. Each preset saves the confirmed levels for every connected display. Saving waits for detection and pending writes to finish.
+
+You can save up to 12 presets. Names must be unique, 1–40 characters, and contain no control characters. Each row shows the screens and levels it contains. Use **Apply**, the pencil to rename, or the trash button to delete. To replace levels, delete the old preset and save a new snapshot.
+
+Applying matches each saved screen by its display UUID, not its name or list position. A missing screen or unavailable volume control is skipped and counted in the result. New screens not in the preset stay unchanged. If no saved screens are connected, nothing is changed. The app reports write failures and keeps the per-display error available to inspect.
+
+Preset application changes only brightness and volume. Resolution, display connection, response timing and brightness method stay unchanged. One control write finishes before the next begins. Other display edits wait during application, but **Restore Displays** remains available and interrupts it. Sleep and display changes also interrupt it. A change already sent to a monitor may complete; interruption does not promise rollback. The app re-reads controls after interrupted writes before allowing another snapshot.
+
+Presets are local to this Mac and survive relaunch. If saved data cannot be read, it is preserved and an explicit **Back Up and Reset Presets** action creates a fresh library while retaining a local backup.
+
+## Keyboard shortcuts
+
+Brightness, volume and mute target the screen under the pointer. An unavailable control produces a message instead of changing a different screen. The keyboard button in the footer lists the keys and any registration conflicts.
+
+| Keys | Action |
+| --- | --- |
+| Control + Option + Command + ↑ / ↓ | Brightness up / down, 5 percentage points |
+| Control + Option + Command + ← / → | Monitor volume down / up, 5 percentage points |
+| Control + Option + Command + M | Mute or restore monitor volume |
+| Control + Option + Command + 1 / 2 / 3 | Apply the corresponding preset in saved list order |
+| Control + Option + Command + R | Restore displays and open the panel |
+
+Preset shortcuts affect all matching screens in the preset, regardless of pointer location. Deleting a preset shifts the following shortcut positions. Brightness and volume clamp at their limits. Unsupported monitor volume, including Mac speakers, is not redirected elsewhere.
+
+**Enable everyday shortcuts** is on by default and remembered across launches. Turning it off releases all everyday keys while keeping the recovery key independently registered. Conflicting registrations are listed; successfully registered keys keep working. Custom key assignments and media-key interception are not included. Registered shortcuts need no Accessibility or Input Monitoring permission.
+
 ## Monitor Controls
 
 Open **Monitor Controls…** or **Configure DDC…** on an external display to inspect support.
@@ -75,6 +109,8 @@ macOS may stop returning a UUID for a disconnected screen. The app retains its v
 
 | Button | Action |
 | --- | --- |
+| Sliders icon | Save and manage brightness/volume presets. |
+| Keyboard icon | Shortcut reference, enable switch and registration errors. |
 | Curved arrow | Restore screens and pending changes owned by Display Mini. |
 | Circular arrow | Refresh discovery and control values. |
 | Power icon | Quit the app. |

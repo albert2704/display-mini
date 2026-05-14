@@ -17,9 +17,9 @@ The user wants keyboard shortcuts, mute, and brightness/volume presets. Shortcut
 Done when controls work from the panel and registered shortcuts, presets survive relaunch, failed or missing monitor writes are explained, and recovery remains available.
 
 - [x] Design it (spec): 0003 records the user's choices and implementation defaults.
-- [ ] Build mute with confirmed volume restore (AC-1).
-- [ ] Build persisted preset management and safe execution (AC-2, AC-3, AC-6).
-- [ ] Build pointer-targeted shortcuts and settings (AC-4, AC-5).
+- [x] Build mute with confirmed volume restore (AC-1).
+- [x] Build persisted preset management and safe execution (AC-2, AC-3, AC-6).
+- [x] Build pointer-targeted shortcuts and settings (AC-4, AC-5).
 - [ ] Verify the native app and update documentation.
 - [ ] Run automated regression checks and publish the PR.
 
