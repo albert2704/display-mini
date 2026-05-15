@@ -21,7 +21,9 @@ Done when controls work from the panel and registered shortcuts, presets survive
 - [x] Build persisted preset management and safe execution (AC-2, AC-3, AC-6).
 - [x] Build pointer-targeted shortcuts and settings (AC-4, AC-5).
 - [ ] Verify the native app and update documentation.
-- [ ] Run automated regression checks and publish the PR.
+- [x] Run automated regression checks and publish the PR.
+
+Implementation and automated checks are complete in [PR #3](https://github.com/albert2704/display-mini/pull/3). Native mute and preset lifecycle checks passed. The PR remains a draft while physical shortcut delivery is awaiting confirmation; automated key injection did not exercise that event path. See [native verification](../reviews/2026-10-10-native-verification.md).
 
 ## Deferred
 
