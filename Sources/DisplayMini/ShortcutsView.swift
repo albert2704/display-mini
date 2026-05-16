@@ -57,9 +57,26 @@ struct ShortcutsView: View {
                 .frame(maxWidth: .infinity).padding(.vertical, 18)
                 .background(PanelStyle.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityLabel("New shortcut: \(draft.label)")
-            Picker("Key", selection: $draft.keyCode) {
-                ForEach(ShortcutKey.choices) { key in Text(key.label).tag(key.id) }
-            }.accessibilityLabel("Shortcut key")
+            HStack {
+                Text("Key")
+                Spacer()
+                Menu {
+                    ForEach(ShortcutKey.groups) { group in
+                        Menu(group.title) {
+                            ForEach(group.keys) { key in
+                                Button {
+                                    draft.keyCode = key.id; store.shortcutEditMessage = nil
+                                } label: {
+                                    if draft.keyCode == key.id { Label(key.label, systemImage: "checkmark") }
+                                    else { Text(key.label) }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Text(ShortcutKey.choices.first { $0.id == draft.keyCode }?.label ?? "Choose")
+                }.menuStyle(.borderedButton).frame(width: 120).accessibilityLabel("Shortcut key")
+            }
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
                 GridRow {
                     modifier("Control", symbol: "⌃", flag: .control)
