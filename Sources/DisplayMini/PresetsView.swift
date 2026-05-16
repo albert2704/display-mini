@@ -77,7 +77,7 @@ struct PresetsView: View {
                 HStack {
                     Text(preset.name).font(PanelStyle.heading).lineLimit(1).help(preset.name)
                     Spacer()
-                    if index < 3 { Text("⌃⌥⌘\(index + 1)").font(.system(size: 10)).foregroundStyle(.secondary) }
+                    if index < 3 { Text(store.shortcutKeys(DisplayShortcut.presetActions[index])).font(.system(size: 10)).foregroundStyle(.secondary) }
                 }
                 ForEach(preset.displays, id: \.uuid) { display in
                     Text("\(display.name) · ☀ \(Int((display.brightness * 100).rounded()))%" +

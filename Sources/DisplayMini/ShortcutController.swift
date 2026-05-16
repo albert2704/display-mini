@@ -29,32 +29,48 @@ enum DisplayShortcut: UInt32, CaseIterable {
         case .preset3: return "Third preset"
         }
     }
-    var keys: String {
-        switch self {
-        case .restore: return "⌃⌥⌘R"
-        case .brightnessUp: return "⌃⌥⌘↑"
-        case .brightnessDown: return "⌃⌥⌘↓"
-        case .volumeDown: return "⌃⌥⌘←"
-        case .volumeUp: return "⌃⌥⌘→"
-        case .mute: return "⌃⌥⌘M"
-        case .preset1: return "⌃⌥⌘1"
-        case .preset2: return "⌃⌥⌘2"
-        case .preset3: return "⌃⌥⌘3"
-        }
+    static let presetActions: [Self] = [.preset1, .preset2, .preset3]
+    var defaultBinding: ShortcutBinding { .init(keyCode: keyCode, modifiers: [.control, .option, .command]) }
+
+}
+
+@MainActor protocol HotKeyRegistering {
+    func register(_ binding: ShortcutBinding, id: UInt32) -> OSStatus
+    func unregister(id: UInt32)
+}
+
+@MainActor final class CarbonHotKeyRegistrar: HotKeyRegistering {
+    private var references: [UInt32: EventHotKeyRef] = [:]
+    func register(_ binding: ShortcutBinding, id: UInt32) -> OSStatus {
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(binding.keyCode, binding.modifiers.carbon,
+            EventHotKeyID(signature: ShortcutController.signature, id: id), GetApplicationEventTarget(), 0, &ref)
+        if status == noErr, let ref { references[id] = ref; return noErr }
+        return status == noErr ? OSStatus(eventNotHandledErr) : status
+    }
+    func unregister(id: UInt32) {
+        if let ref = references.removeValue(forKey: id) { UnregisterEventHotKey(ref) }
     }
 }
 
-/// Registered hotkeys do not intercept arbitrary keyboard input.
+/// New chords are acquired before old registrations are released. Failed edits preserve the active bindings.
 @MainActor final class ShortcutController {
-    private static let signature: OSType = 0x444D494E
+    static let signature: OSType = 0x444D494E
+    private struct Registration { let id: UInt32; let action: DisplayShortcut }
+    private let registrar: HotKeyRegistering
     private var handler: EventHandlerRef?
-    private var registrations: [DisplayShortcut: EventHotKeyRef] = [:]
-    private var failures: [DisplayShortcut: OSStatus] = [:]
+    private var handlerAvailable = false
+    private var registrations: [ShortcutBinding: Registration] = [:]
+    private var nextID: UInt32 = 1
+    private var currentPreferences: ShortcutPreferences?
     private let perform: (DisplayShortcut) -> Void
     private let report: ([String]) -> Void
 
-    init(perform: @escaping (DisplayShortcut) -> Void, report: @escaping ([String]) -> Void) {
+    init(registrar: HotKeyRegistering? = nil, installHandler: Bool = true,
+         perform: @escaping (DisplayShortcut) -> Void, report: @escaping ([String]) -> Void) {
+        self.registrar = registrar ?? CarbonHotKeyRegistrar()
         self.perform = perform; self.report = report
+        guard installHandler else { handlerAvailable = true; return }
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
         let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
@@ -62,42 +78,60 @@ enum DisplayShortcut: UInt32, CaseIterable {
             var id = EventHotKeyID()
             let result = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                                            nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
-            guard result == noErr, id.signature == 0x444D494E,
-                  let action = DisplayShortcut(rawValue: id.id) else { return OSStatus(eventNotHandledErr) }
+            guard result == noErr, id.signature == 0x444D494E else { return OSStatus(eventNotHandledErr) }
             let controller = Unmanaged<ShortcutController>.fromOpaque(context).takeUnretainedValue()
-            Task { @MainActor [weak controller] in
-                guard let controller, controller.registrations[action] != nil else { return }
-                controller.perform(action)
-            }
+            Task { @MainActor [weak controller] in controller?.handleEvent(signature: id.signature, id: id.id) }
             return noErr
         }, 1, &eventType, context, &handler)
-        if status == noErr { register(.restore) }
+        handlerAvailable = status == noErr
     }
 
-    func setEverydayEnabled(_ enabled: Bool) {
-        for action in DisplayShortcut.allCases where action != .restore {
-            if let ref = registrations.removeValue(forKey: action) { UnregisterEventHotKey(ref) }
-            failures.removeValue(forKey: action)
-            if enabled, handler != nil { register(action) }
+    /// Atomic is used for user edits. Startup/toggle registers available keys and reports each unavailable one.
+    @discardableResult func configure(_ preferences: ShortcutPreferences, enabled: Bool, atomic: Bool = false) -> String? {
+        guard handlerAvailable else {
+            let errors = ["Keyboard shortcuts could not start. Panel controls remain available."]
+            if !atomic { report(errors) }; return errors.joined(separator: "\n")
         }
-        if handler == nil { report(["Keyboard shortcuts could not start. Panel controls remain available."]); return }
-        report(DisplayShortcut.allCases.compactMap { action in
-            failures[action].map { "\(action.title) (\(action.keys)) could not register, possibly because another app uses it. Error \($0)." }
-        })
+        var desired: [ShortcutBinding: DisplayShortcut] = [.recovery: .restore]
+        for action in DisplayShortcut.allCases where enabled || action == .restore { desired[preferences[action]] = action }
+        var staged: [ShortcutBinding: Registration] = [:]
+        var errors: [String] = []
+        var editErrors: [String] = []
+        let changedBindings = Set(DisplayShortcut.allCases.filter { currentPreferences?[$0] != preferences[$0] }.map { preferences[$0] })
+        for binding in desired.keys.sorted(by: { ($0.keyCode, $0.modifiers.rawValue) < ($1.keyCode, $1.modifiers.rawValue) }) {
+            let action = desired[binding]!
+            if let existing = registrations[binding] {
+                staged[binding] = Registration(id: existing.id, action: action)
+            } else {
+                let id = nextID; nextID += 1
+                let status = registrar.register(binding, id: id)
+                if status == noErr { staged[binding] = Registration(id: id, action: action) }
+                else {
+                    let error = "\(action.title) (\(binding.label)) could not register, possibly because another app uses it. Error \(status)."
+                    errors.append(error)
+                    if changedBindings.contains(binding) { editErrors.append(error) }
+                }
+            }
+        }
+        if atomic && !editErrors.isEmpty {
+            for (binding, registration) in staged where registrations[binding] == nil { registrar.unregister(id: registration.id) }
+            return editErrors.joined(separator: "\n")
+        }
+        for (binding, registration) in registrations where staged[binding] == nil { registrar.unregister(id: registration.id) }
+        registrations = staged; currentPreferences = preferences
+        report(errors)
+        return nil
     }
 
-    private func register(_ action: DisplayShortcut) {
-        var ref: EventHotKeyRef?
-        let status = RegisterEventHotKey(action.keyCode, UInt32(controlKey | optionKey | cmdKey),
-                                        EventHotKeyID(signature: Self.signature, id: action.rawValue),
-                                        GetApplicationEventTarget(), 0, &ref)
-        if status == noErr, let ref { registrations[action] = ref }
-        else { failures[action] = status }
+    func handleEvent(signature: OSType, id: UInt32) {
+        guard signature == Self.signature, let registration = registrations.values.first(where: { $0.id == id }) else { return }
+        perform(registration.action)
     }
+
     func shutdown() {
-        for ref in registrations.values { UnregisterEventHotKey(ref) }
+        for registration in registrations.values { registrar.unregister(id: registration.id) }
         registrations.removeAll()
         if let handler { RemoveEventHandler(handler) }
-        handler = nil
+        handler = nil; handlerAvailable = false
     }
 }

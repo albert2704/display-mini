@@ -20,6 +20,7 @@ Done when controls work from the panel and registered shortcuts, presets survive
 - [x] Build mute with confirmed volume restore (AC-1).
 - [x] Build persisted preset management and safe execution (AC-2, AC-3, AC-6).
 - [x] Build pointer-targeted shortcuts and settings (AC-4, AC-5).
+- [ ] Add editable shortcut bindings and registration/persistence checks (AC-7, user follow-up).
 - [ ] Verify the native app and update documentation.
 - [x] Run automated regression checks and publish the PR.
 
@@ -27,4 +28,4 @@ Implementation and automated checks are complete in [PR #3](https://github.com/a
 
 ## Deferred
 
-Custom shortcut bindings, media-key interception, preset schedules, preset resolution/connection changes, and network-controlled displays.
+Media-key interception, preset schedules, preset resolution/connection changes, and network-controlled displays.

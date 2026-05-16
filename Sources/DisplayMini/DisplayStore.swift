@@ -84,6 +84,11 @@ struct DisplayMode: Identifiable {
         didSet { UserDefaults.standard.set(shortcutsEnabled, forKey: "everydayShortcutsEnabled") }
     }
     @Published var shortcutErrors: [String] = []
+    @Published private(set) var shortcutPreferences = ShortcutPreferences()
+    @Published private(set) var shortcutStorageMessage: String?
+    @Published var shortcutEditMessage: String?
+    var updateShortcutRegistration: ((ShortcutPreferences) -> String?)?
+    private let shortcutDefaults: UserDefaults
     private var presetProgress: PresetProgress?
     private var presetSteps: [PresetPlan.Step] = []
     private var presetSkipped = 0
@@ -116,7 +121,12 @@ struct DisplayMode: Identifiable {
     }
     var activeCount: Int { displays.filter(\.connected).count }
 
-    init(startMonitoring: Bool = true) {
+    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard) {
+        self.shortcutDefaults = shortcutDefaults
+        if let data = shortcutDefaults.data(forKey: "shortcutBindings") {
+            do { shortcutPreferences = try ShortcutPreferences.decode(data) }
+            catch { shortcutStorageMessage = error.localizedDescription }
+        }
         if let data = UserDefaults.standard.data(forKey: "displayPresets") {
             do { presetLibrary = try PresetLibrary.decode(data) }
             catch { presetStorageError = error.localizedDescription }
@@ -449,13 +459,42 @@ struct DisplayMode: Identifiable {
         setVolume(device, MonitorAudio.toggledVolume(current: volume, remembered: device.volumeBeforeMute))
     }
 
+    func shortcutKeys(_ action: DisplayShortcut) -> String { shortcutPreferences[action].label }
+
+    @discardableResult func saveShortcut(_ action: DisplayShortcut, binding: ShortcutBinding) -> Bool {
+        do {
+            var preferences = shortcutPreferences
+            try preferences.set(action, binding: binding)
+            return saveShortcutPreferences(preferences)
+        } catch { shortcutEditMessage = error.localizedDescription; return false }
+    }
+
+    @discardableResult func resetShortcuts() -> Bool { saveShortcutPreferences(ShortcutPreferences()) }
+
+    private func saveShortcutPreferences(_ preferences: ShortcutPreferences) -> Bool {
+        guard let updateShortcutRegistration else { shortcutEditMessage = "Keyboard shortcuts are not ready yet."; return false }
+        do {
+            let data = try JSONEncoder().encode(preferences)
+            if let error = updateShortcutRegistration(preferences) {
+                shortcutEditMessage = "\(error) Your previous bindings are still active."
+                return false
+            }
+            if shortcutStorageMessage != nil {
+                shortcutDefaults.set(shortcutDefaults.data(forKey: "shortcutBindings"), forKey: "shortcutBindingsBackup")
+            }
+            shortcutDefaults.set(data, forKey: "shortcutBindings")
+            shortcutPreferences = preferences; shortcutStorageMessage = nil; shortcutEditMessage = nil
+            return true
+        } catch { shortcutEditMessage = error.localizedDescription; return false }
+    }
+
     /// Returns false when the panel should show why the action could not run.
     func performShortcut(_ action: DisplayShortcut) -> Bool {
         guard shortcutsEnabled, !sleeping else { return true }
         if [.preset1, .preset2, .preset3].contains(action) {
             let index = Int(action.rawValue - DisplayShortcut.preset1.rawValue)
             guard presetLibrary.presets.indices.contains(index) else {
-                message = "Save a preset in Presets before using \(action.keys)."; return false
+                message = "Save a preset in Presets before using \(shortcutKeys(action))."; return false
             }
             let applied = applyPreset(presetLibrary.presets[index])
             if !applied { message = presetMessage }
