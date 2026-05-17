@@ -57,7 +57,7 @@ Presets are local to this Mac and survive relaunch. If saved data cannot be read
 
 ## Keyboard shortcuts
 
-Brightness, volume and mute target the screen under the pointer. An unavailable control produces a message instead of changing a different screen. The keyboard button in the footer lists the keys and any registration conflicts.
+Brightness, volume and mute target the screen under the pointer. An unavailable control produces a message instead of changing a different screen. The keyboard button in the footer lists your current keys, lets you edit each action, and shows any registration conflicts. The table below lists the defaults.
 
 | Keys | Action |
 | --- | --- |
@@ -69,7 +69,13 @@ Brightness, volume and mute target the screen under the pointer. An unavailable 
 
 Preset shortcuts affect all matching screens in the preset, regardless of pointer location. Deleting a preset shifts the following shortcut positions. Brightness and volume clamp at their limits. Unsupported monitor volume, including Mac speakers, is not redirected elsewhere.
 
-**Enable everyday shortcuts** is on by default and remembered across launches. Turning it off releases all everyday keys while keeping the recovery key independently registered. Conflicting registrations are listed; successfully registered keys keep working. Custom key assignments and media-key interception are not included. Registered shortcuts need no Accessibility or Input Monitoring permission.
+To change a shortcut, click its key combination, select a key from the compact grouped menu, choose Control/Option/Shift/Command, then click **Save**. Include at least Control or Command. Letters, digits, arrows, F1–F12, Space, Home/End and Page Up/Down are supported. Labels describe US physical keyboard positions; some keyboards require Fn for function keys. **Default** fills the current action's original binding; **Reset All to Defaults** restores the whole set.
+
+Duplicate assignments inside Display Mini are rejected. If macOS cannot register an edited combination, the old bindings stay active and the new preference is not saved. Registration cannot detect every shortcut used inside individual apps, so avoid combinations you use elsewhere. Changes persist across relaunch. Preset row labels follow your custom bindings.
+
+**Enable everyday shortcuts** is on by default and remembered across launches. Turning it off releases everyday keys. You can edit while they are off; new combinations are checked when you enable them. Conflicting registrations are listed, and available keys keep working. Both the customized Restore shortcut and the fixed **Control + Option + Command + R** recovery fallback remain independently enabled. That fallback cannot be assigned to another action.
+
+If saved bindings cannot be read, defaults become active and the original data is kept. The next explicit save/reset backs up that unreadable data locally. Registered shortcuts need no Accessibility or Input Monitoring permission. Media-key interception and press-to-record shortcuts are not included.
 
 ## Monitor Controls
 

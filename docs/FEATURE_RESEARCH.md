@@ -17,13 +17,13 @@ DisplayBuddy also documents Samsung Smart control over Wi-Fi. That would require
 
 [DisplayBuddy presets](https://displaybuddy.app/docs/presets) and its [keyboard shortcut guide](https://displaybuddy.app/docs/keyboard-shortcuts) informed named snapshots and quick activation. Display Mini saves confirmed brightness/volume for connected screens, matches by UUID, and exposes the first three presets through registered modifier shortcuts. The user explicitly selected the screen under the pointer for brightness, volume and mute keys.
 
-Mute is implemented as confirmed volume zero with last-volume restore through the existing DDC path. This is Display Mini's own implementation choice, not a claim about another app's internals. Carbon registered hotkeys extend the existing recovery mechanism and avoid broad keyboard interception.
+Mute is implemented as confirmed volume zero with last-volume restore through the existing DDC path. This is Display Mini's own implementation choice, not a claim about another app's internals. Carbon registered hotkeys extend the existing recovery mechanism and avoid broad keyboard interception. A later user request added editable key/modifier bindings with saved defaults and failed-edit rollback.
 
 ## Practical candidates for later
 
 * Wake settling and per-display retry policy, to address monitors that become ready later than macOS.
 * Optional synchronization across selected screens and preset scheduling.
-* Custom shortcut bindings and carefully scoped media-key support.
+* Press-to-record shortcuts and carefully scoped media-key support.
 * Manual resolution of duplicate monitor identities, only after a stable port mapping can be tested across reconnects.
 
 These are candidates, not promises or implemented features. Implemented features are listed above; broader automation remains outside this update.
