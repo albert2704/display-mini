@@ -33,6 +33,8 @@ import SwiftUI
             else if !self.store.performShortcut(action) { self.showPanel(refresh: false) }
         }, report: { [weak self] errors in
             self?.store.shortcutErrors = errors
+        }, intercept: { [weak self] binding in
+            self?.store.shortcutRecorder.intercept(binding) ?? false
         })
         shortcuts?.configure(store.shortcutPreferences, enabled: store.shortcutsEnabled)
         store.updateShortcutRegistration = { [weak self] preferences in
@@ -58,6 +60,7 @@ import SwiftUI
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showPanel(); return true }
 
     func applicationWillTerminate(_ notification: Notification) {
+        store?.shortcutRecorder.endEditing()
         store?.shutdown()
         shortcutSetting = nil
         shortcuts?.shutdown()

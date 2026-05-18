@@ -1,5 +1,6 @@
 import Foundation
 import Carbon
+import AppKit
 
 @MainActor private final class FakeHotKeys: HotKeyRegistering {
     var active: [UInt32: ShortcutBinding] = [:]
@@ -20,7 +21,11 @@ import Carbon
         resetReusesChordsAndDisableKeepsRecovery()
         existingConflictDoesNotBlockOtherEdits()
         persistenceAndFailedSave()
-        print("Passed 5 shortcut scenarios (validation, atomic edits, reset/recovery/event dispatch, independent conflicts, persistence).")
+        recordingCapturesPhysicalKeysAndModifiers()
+        recordingRejectsInvalidKeysAndCancels()
+        recordingStaysInsideTheEditor()
+        recordingInterceptsRegisteredHotKeys()
+        print("Passed 9 shortcut scenarios (validation, atomic edits, reset/recovery/event dispatch, independent conflicts, persistence, recording, invalid input/cancel, recording scope, registered-key capture).")
     }
     static func preferenceValidation() {
         var prefs = ShortcutPreferences()
@@ -117,5 +122,97 @@ import Carbon
         recovered.updateShortcutRegistration = { _ in nil }
         precondition(recovered.resetShortcuts())
         precondition(defaults.data(forKey: "shortcutBindingsBackup") == bad)
+    }
+
+    static func event(_ code: Int, flags: NSEvent.ModifierFlags = [], type: NSEvent.EventType = .keyDown,
+                      repeating: Bool = false) -> NSEvent {
+        NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags, timestamp: 0,
+            windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+            isARepeat: repeating, keyCode: UInt16(code))!
+    }
+
+    static func recordingCapturesPhysicalKeysAndModifiers() {
+        let recorder = ShortcutRecorder(isForeground: { true })
+        var captured: [ShortcutBinding] = []
+        recorder.beginEditing()
+        recorder.start(installMonitor: false) { captured.append($0) }
+        precondition(recorder.handle(event(kVK_Control, flags: [.control, .shift], type: .flagsChanged)))
+        precondition(recorder.heldModifiers == "⌃⇧" && captured.isEmpty)
+        precondition(recorder.handle(event(kVK_ANSI_K, flags: [.control, .shift, .capsLock, .function, .numericPad])))
+        precondition(captured == [custom] && !recorder.isRecording)
+        // Subsequent typing cannot replace the captured draft without another explicit start.
+        precondition(!recorder.handle(event(kVK_ANSI_A, flags: .command)))
+        recorder.start(installMonitor: false) { captured.append($0) }
+        precondition(recorder.handle(event(kVK_F2, flags: [.command, .option, .function])))
+        precondition(captured.last == .init(keyCode: UInt32(kVK_F2), modifiers: [.command, .option]))
+        recorder.endEditing()
+    }
+
+    static func recordingRejectsInvalidKeysAndCancels() {
+        let recorder = ShortcutRecorder(isForeground: { true })
+        var captured: [ShortcutBinding] = []
+        recorder.beginEditing()
+        recorder.start(installMonitor: false) { captured.append($0) }
+        for invalid in [event(kVK_ANSI_K), event(kVK_ANSI_K, flags: [.option, .shift]),
+                        event(kVK_Tab, flags: .command), event(kVK_ANSI_K, flags: .command, repeating: true)] {
+            precondition(recorder.handle(invalid))
+            precondition(recorder.isRecording && captured.isEmpty)
+        }
+        precondition(recorder.message != nil)
+        precondition(recorder.handle(event(kVK_Escape)))
+        precondition(!recorder.isRecording && captured.isEmpty)
+        // Cancel and end may be called repeatedly as nested popovers disappear.
+        recorder.cancel(); recorder.endEditing(); recorder.endEditing()
+        precondition(!recorder.isEditing && !recorder.isRecording)
+    }
+
+    static func recordingStaysInsideTheEditor() {
+        var foreground = true
+        let recorder = ShortcutRecorder(isForeground: { foreground })
+        var captured: [ShortcutBinding] = []
+        recorder.start(installMonitor: false) { captured.append($0) }
+        precondition(!recorder.isRecording)
+        recorder.beginEditing()
+        recorder.start(installMonitor: false) { captured.append($0) }
+        foreground = false
+        precondition(!recorder.handle(event(kVK_ANSI_K, flags: .command)))
+        precondition(!recorder.isRecording && captured.isEmpty && !recorder.intercept(custom))
+        recorder.start(installMonitor: false) { captured.append($0) }
+        precondition(!recorder.isRecording)
+        foreground = true
+        recorder.start(installMonitor: false) { captured.append($0) }
+        recorder.endEditing()
+        precondition(!recorder.handle(event(kVK_ANSI_K, flags: .command)) && captured.isEmpty)
+    }
+
+    static func recordingInterceptsRegisteredHotKeys() {
+        var foreground = true
+        let recorder = ShortcutRecorder(isForeground: { foreground })
+        let backend = FakeHotKeys()
+        var actions: [DisplayShortcut] = []
+        var captured: [ShortcutBinding] = []
+        let controller = ShortcutController(registrar: backend, installHandler: false,
+            perform: { actions.append($0) }, report: { _ in }, intercept: { recorder.intercept($0) })
+        controller.configure(ShortcutPreferences(), enabled: true)
+        let registrations = backend.active
+        let brightness = DisplayShortcut.brightnessUp.defaultBinding
+        recorder.beginEditing()
+        recorder.start(installMonitor: false) { captured.append($0) }
+        controller.handleEvent(signature: 0, id: backend.id(for: brightness))
+        precondition(captured.isEmpty)
+        controller.handleEvent(signature: ShortcutController.signature, id: backend.id(for: brightness))
+        precondition(captured == [brightness] && actions.isEmpty && !recorder.isRecording)
+        controller.handleEvent(signature: ShortcutController.signature, id: backend.id(for: brightness))
+        precondition(actions.isEmpty) // Held keys do not change the monitor after capture.
+        recorder.start(installMonitor: false) { captured.append($0) }
+        controller.handleEvent(signature: ShortcutController.signature, id: backend.id(for: .recovery))
+        precondition(captured.last == .recovery && actions.isEmpty)
+        foreground = false
+        controller.handleEvent(signature: ShortcutController.signature, id: backend.id(for: .recovery))
+        precondition(actions == [.restore]) // Global recovery remains available outside the focused editor.
+        foreground = true; recorder.endEditing()
+        controller.handleEvent(signature: ShortcutController.signature, id: backend.id(for: brightness))
+        precondition(actions == [.restore, .brightnessUp] && backend.active == registrations)
+        controller.shutdown()
     }
 }

@@ -10,7 +10,7 @@ xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library -I .build/checks .build/chec
   Tests/DisplayCoreTests/*.swift -o .build/checks/ControlChecks -module-cache-path .build/native-cache
 .build/checks/ControlChecks
 xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library -I .build/checks .build/checks/DisplayCore.o \
-  Sources/DisplayMini/DisplayStore.swift Sources/DisplayMini/ShortcutController.swift Sources/DisplayMini/ShortcutPreferences.swift Tests/DisplayStoreTests/*.swift \
+  Sources/DisplayMini/DisplayStore.swift Sources/DisplayMini/ShortcutController.swift Sources/DisplayMini/ShortcutPreferences.swift Sources/DisplayMini/ShortcutRecorder.swift Tests/DisplayStoreTests/*.swift \
   -framework Carbon -o .build/checks/StoreChecks -module-cache-path .build/native-cache
 .build/checks/StoreChecks
 xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library -I .build/checks .build/checks/DisplayCore.o \
