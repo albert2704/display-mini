@@ -69,13 +69,17 @@ Brightness, volume and mute target the screen under the pointer. An unavailable 
 
 Preset shortcuts affect all matching screens in the preset, regardless of pointer location. Deleting a preset shifts the following shortcut positions. Brightness and volume clamp at their limits. Unsupported monitor volume, including Mac speakers, is not redirected elsewhere.
 
-To change a shortcut, click its key combination, select a key from the compact grouped menu, choose Control/Option/Shift/Command, then click **Save**. Include at least Control or Command. Letters, digits, arrows, F1–F12, Space, Home/End and Page Up/Down are supported. Labels describe US physical keyboard positions; some keyboards require Fn for function keys. **Default** fills the current action's original binding; **Reset All to Defaults** restores the whole set.
+To change a shortcut, click its key combination, click **Record Shortcut**, and press the combination on your keyboard. Review the captured keys, then click **Save**. **Escape** or **Stop Recording** cancels capture without changing the draft. Closing the editor or switching away stops recording. You can still select a key from the compact grouped menu and choose Control/Option/Shift/Command manually.
+
+Include at least Control or Command. Letters, digits, arrows, F1–F12, Space, Home/End and Page Up/Down are supported. Unsupported combinations show a message and keep listening. Modifier keys alone do not finish recording. Labels describe US physical keyboard positions; some keyboards require Fn for function keys. **Default** fills the current action's original binding; **Reset All to Defaults** restores the whole set.
+
+While the shortcut editor is open and Display Mini is active, its registered shortcuts are captured or ignored instead of running display actions. This includes the keyboard recovery fallback and prevents a held key from changing a display after capture. Close the editor or switch away to use those keys again. The panel's **Restore Displays** button remains available. Combinations reserved by macOS or another app may never reach the recorder; choose another combination if nothing is captured.
 
 Duplicate assignments inside Display Mini are rejected. If macOS cannot register an edited combination, the old bindings stay active and the new preference is not saved. Registration cannot detect every shortcut used inside individual apps, so avoid combinations you use elsewhere. Changes persist across relaunch. Preset row labels follow your custom bindings.
 
 **Enable everyday shortcuts** is on by default and remembered across launches. Turning it off releases everyday keys. You can edit while they are off; new combinations are checked when you enable them. Conflicting registrations are listed, and available keys keep working. Both the customized Restore shortcut and the fixed **Control + Option + Command + R** recovery fallback remain independently enabled. That fallback cannot be assigned to another action.
 
-If saved bindings cannot be read, defaults become active and the original data is kept. The next explicit save/reset backs up that unreadable data locally. Registered shortcuts need no Accessibility or Input Monitoring permission. Media-key interception and press-to-record shortcuts are not included.
+If saved bindings cannot be read, defaults become active and the original data is kept. The next explicit save/reset backs up that unreadable data locally. Recording listens only for events sent to Display Mini during an explicit recording session. No keystroke history is collected, and no Accessibility or Input Monitoring permission is required. Media keys are not supported.
 
 ## Monitor Controls
 

@@ -21,6 +21,7 @@ Done when controls work from the panel and registered shortcuts, presets survive
 - [x] Build persisted preset management and safe execution (AC-2, AC-3, AC-6).
 - [x] Build pointer-targeted shortcuts and settings (AC-4, AC-5).
 - [x] Add editable shortcut bindings and registration/persistence checks (AC-7, user follow-up).
+- [x] Add keyboard recording with cancellation and safe capture of registered keys (AC-8, user follow-up).
 - [ ] Verify the native app and update documentation.
 - [x] Run automated regression checks and publish the PR.
 
