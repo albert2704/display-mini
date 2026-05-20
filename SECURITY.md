@@ -12,7 +12,9 @@ There is no promised response time or long term support window for this early pr
 
 The app has no accounts, analytics, network requests, cloud storage, or automatic updater. It stores local preferences and recovery records in the `dev.albert.DisplayMini` UserDefaults domain.
 
-Those records include display UUIDs, vendor/model/serial identities, software dimming preferences, owned disconnections, and a pending resolution. They support recovery and are not uploaded. Treat exported preferences and detailed monitor diagnostics as identifying information when sharing publicly.
+Those records include display UUIDs, vendor/model/serial identities, software dimming preferences, owned disconnections, a pending resolution, preset names and per-screen levels, last nonzero monitor volume, the shortcut enable preference, and custom key/modifier bindings. No keystroke history is collected. They support recovery and are not uploaded. Treat exported preferences and detailed monitor diagnostics as identifying information when sharing publicly.
+
+Shortcut recording uses a local AppKit event monitor only during an explicit recording session in the foreground editor. It stops on capture, cancel, app/window blur, editor closure or shutdown. It does not install a global keyboard monitor, request Accessibility/Input Monitoring access, or save typed text. Only the selected binding is persisted after Save.
 
 ## Process and OS boundaries
 

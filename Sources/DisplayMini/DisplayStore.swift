@@ -24,6 +24,7 @@ struct DisplayMode: Identifiable {
     @Published var volume: Double?
     @Published var brightnessMethod = "Software"
     @Published var reading = false
+    @Published var needsControlRead = false
     @Published var writesInFlight = 0
     var writing: Bool { writesInFlight > 0 }
     @Published var error: String?
@@ -42,6 +43,13 @@ struct DisplayMode: Identifiable {
     var volumeMaximum = 100
     var confirmedBrightness = 1.0
     var confirmedVolume: Double?
+    var volumeBeforeMute: Double? {
+        get { UserDefaults.standard.object(forKey: "volumeBeforeMute.\(id)") as? Double }
+        set { UserDefaults.standard.set(newValue, forKey: "volumeBeforeMute.\(id)") }
+    }
+    func rememberVolume() {
+        volumeBeforeMute = MonitorAudio.rememberedVolume(confirmed: confirmedVolume, previous: volumeBeforeMute)
+    }
     var revision = 0
     var brightnessRevision = 0
     var volumeRevision = 0
@@ -68,6 +76,30 @@ struct DisplayMode: Identifiable {
     @Published var pendingResolutionName: String?
     @Published var secondsRemaining = 0
     @Published var unresolvedRecovery = false
+    @Published private(set) var presetLibrary = PresetLibrary()
+    @Published private(set) var presetStorageError: String?
+    @Published private(set) var applyingPresetName: String?
+    @Published var presetMessage: String?
+    @Published var shortcutsEnabled = UserDefaults.standard.object(forKey: "everydayShortcutsEnabled") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(shortcutsEnabled, forKey: "everydayShortcutsEnabled") }
+    }
+    @Published var shortcutErrors: [String] = []
+    @Published private(set) var shortcutPreferences = ShortcutPreferences()
+    @Published private(set) var shortcutStorageMessage: String?
+    @Published var shortcutEditMessage: String?
+    let shortcutRecorder = ShortcutRecorder()
+    var updateShortcutRegistration: ((ShortcutPreferences) -> String?)?
+    private let shortcutDefaults: UserDefaults
+    private var presetProgress: PresetProgress?
+    private var presetSteps: [PresetPlan.Step] = []
+    private var presetSkipped = 0
+    private var deviceObservers = Set<AnyCancellable>()
+    var controlsBusy: Bool { connectionBusy || pendingResolutionName != nil || applyingPresetName != nil }
+    var canSavePreset: Bool {
+        presetStorageError == nil && !controlsBusy && !sleeping && activeCount > 0 && displays.filter(\.connected).allSatisfy {
+            !$0.reading && !$0.writing && !$0.needsControlRead && $0.pendingBrightness == nil && $0.pendingVolume == nil
+        }
+    }
     let native = NativeDisplays()
     let ddc = DDCClient()
     let dimming = DimmingWindows()
@@ -90,7 +122,17 @@ struct DisplayMode: Identifiable {
     }
     var activeCount: Int { displays.filter(\.connected).count }
 
-    init() {
+    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard) {
+        self.shortcutDefaults = shortcutDefaults
+        if let data = shortcutDefaults.data(forKey: "shortcutBindings") {
+            do { shortcutPreferences = try ShortcutPreferences.decode(data) }
+            catch { shortcutStorageMessage = error.localizedDescription }
+        }
+        if let data = UserDefaults.standard.data(forKey: "displayPresets") {
+            do { presetLibrary = try PresetLibrary.decode(data) }
+            catch { presetStorageError = error.localizedDescription }
+        }
+        guard startMonitoring else { return }
         // Recover only connections this app owns, including after an unexpected exit.
         for uuid in ownedDisconnects {
             do { try native.setConnected(uuid: uuid, enabled: true); ownedDisconnects.remove(uuid) }
@@ -105,7 +147,7 @@ struct DisplayMode: Identifiable {
             Task { @MainActor in self?.sleeping = false; self?.scheduleRefresh() }
         })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.sleeping = true }
+            Task { @MainActor in self?.sleeping = true; self?.cancelControlEdits() }
         })
     }
 
@@ -114,6 +156,7 @@ struct DisplayMode: Identifiable {
     }
 
     private func scheduleRefresh() {
+        if applyingPresetName != nil { cancelControlEdits() }
         refreshWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.refresh() }
         refreshWork = work
@@ -121,6 +164,7 @@ struct DisplayMode: Identifiable {
     }
 
     func refresh() {
+        if applyingPresetName != nil { cancelControlEdits() }
         recoverBuiltInIfNeeded()
         var result: [DisplayDevice] = []
         for displayID in native.displayIDs() {
@@ -158,6 +202,10 @@ struct DisplayMode: Identifiable {
             if ownedDisconnects.contains(missing.id) { missing.connected = false; result.append(missing) }
         }
         displays = result.sorted { a, b in a.builtIn != b.builtIn ? a.builtIn : a.name < b.name }
+        deviceObservers.removeAll()
+        for device in displays {
+            device.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &deviceObservers)
+        }
         updateRecoveryTimer()
     }
 
@@ -278,13 +326,14 @@ struct DisplayMode: Identifiable {
         }
         device.confirmedBrightness = device.brightness
         applyDimming(device, fraction: device.softwareFraction)
-        guard !device.builtIn else { return }
+        guard !device.builtIn else { device.needsControlRead = false; return }
         device.reading = true
         let revision = device.revision
         ddc.read(uuid: device.id, timing: device.ddcTiming) { [weak self, weak device] result in
             guard let self, let device else { return }
             device.reading = false
-            guard device.connected, device.revision == revision else { return }
+            guard device.connected, device.revision == revision else { self.reconcileControlsIfNeeded(device); return }
+            device.needsControlRead = false
             device.lastDDCCheck = Date()
             switch result {
             case .success(let probe): device.ddcProbe = probe; device.ddcFailure = nil
@@ -296,6 +345,7 @@ struct DisplayMode: Identifiable {
             device.brightnessMaximum = device.ddcProbe?.brightness.maximum ?? 100
             device.volumeMaximum = device.ddcProbe?.volume.maximum ?? 100
             device.volume = volume; device.confirmedVolume = volume
+            device.rememberVolume()
             if !device.forceSoftware && !device.nativeBrightness, let brightness {
                 device.brightnessMethod = "Combined"
                 device.brightness = ControlMath.combinedValue(hardware: brightness, software: device.softwareFraction)
@@ -309,18 +359,30 @@ struct DisplayMode: Identifiable {
         }
     }
 
+    private func reconcileControlsIfNeeded(_ device: DisplayDevice) {
+        guard device.needsControlRead, device.connected, !shuttingDown, !sleeping,
+              !device.reading, !device.writing, device.pendingBrightness == nil, device.pendingVolume == nil else { return }
+        readControls(device)
+    }
+
     private func applyDimming(_ device: DisplayDevice, fraction: Double) {
         dimming.set(uuid: device.id, screen: screen(for: device), fraction: fraction)
     }
 
     func setBrightness(_ device: DisplayDevice, _ value: Double) {
-        guard device.connected, pendingResolution == nil, !connectionBusy else { return }
+        guard !controlsBusy, !sleeping, !device.needsControlRead else { return }
+        writeBrightness(device, value)
+    }
+
+    private func writeBrightness(_ device: DisplayDevice, _ value: Double, completion: @escaping (Bool) -> Void = { _ in }) {
+        guard device.connected, pendingResolution == nil, !connectionBusy else { completion(false); return }
         device.revision += 1; device.brightnessRevision += 1; device.error = nil
         device.brightness = ControlMath.clamp(value)
         device.pendingBrightness?.cancel()
         let work = DispatchWorkItem { [weak self, weak device] in
-            guard let self, let device, device.connected else { return }
+            guard let self, let device, device.connected else { completion(false); return }
             device.pendingBrightness = nil
+            defer { self.reconcileControlsIfNeeded(device) }
             let requested = device.brightness
             let parts = ControlMath.combined(requested)
             let softwareOnly = device.forceSoftware || (!device.nativeBrightness && !device.ddcBrightness)
@@ -328,24 +390,31 @@ struct DisplayMode: Identifiable {
             if softwareOnly {
                 device.softwareFraction = software; device.confirmedBrightness = requested
                 self.applyDimming(device, fraction: software)
+                completion(true)
             } else if device.nativeBrightness {
                 do {
                     try self.native.setBrightness(device.displayID, value: max(0.01, parts.hardware))
                     device.softwareFraction = software; device.confirmedBrightness = requested
                     self.applyDimming(device, fraction: software)
-                } catch { device.brightness = device.confirmedBrightness; device.error = error.localizedDescription }
+                    completion(true)
+                } catch { device.brightness = device.confirmedBrightness; device.error = error.localizedDescription; completion(false) }
             } else {
                 device.writesInFlight += 1
                 let revision = device.brightnessRevision
                 self.ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "luminance", value: ControlMath.rawValue(fraction: parts.hardware, maximum: device.brightnessMaximum)) { [weak self, weak device] result in
-                    guard let self, let device else { return }
+                    guard let self, let device else { completion(false); return }
+                    defer { self.reconcileControlsIfNeeded(device) }
                     device.writesInFlight = max(0, device.writesInFlight - 1)
-                    guard device.brightnessRevision == revision, device.connected else { return }
+                    guard device.brightnessRevision == revision, device.connected else {
+                        self.reconcileControlsIfNeeded(device); completion(false); return
+                    }
                     if case .success = result {
                         device.confirmedBrightness = requested
                         device.softwareFraction = software; self.applyDimming(device, fraction: software)
+                        completion(true)
                     } else if case .failure(let error) = result {
                         device.brightness = device.confirmedBrightness; device.error = error.localizedDescription
+                        completion(false)
                     }
                 }
             }
@@ -355,19 +424,29 @@ struct DisplayMode: Identifiable {
     }
 
     func setVolume(_ device: DisplayDevice, _ value: Double) {
-        guard device.connected, device.volume != nil, !connectionBusy else { return }
+        guard !controlsBusy, !sleeping, !device.needsControlRead else { return }
+        writeVolume(device, value)
+    }
+
+    private func writeVolume(_ device: DisplayDevice, _ value: Double, completion: @escaping (Bool) -> Void = { _ in }) {
+        guard device.connected, device.volume != nil, !connectionBusy, pendingResolution == nil else { completion(false); return }
         device.revision += 1; device.volumeRevision += 1; device.error = nil; device.volume = ControlMath.clamp(value)
         device.pendingVolume?.cancel()
         let work = DispatchWorkItem { [weak self, weak device] in
-            guard let self, let device, device.connected, let requested = device.volume else { return }
+            guard let self, let device, device.connected, let requested = device.volume else { completion(false); return }
             device.pendingVolume = nil; device.writesInFlight += 1
             let revision = device.volumeRevision
-            self.ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "volume", value: ControlMath.rawValue(fraction: requested, maximum: device.volumeMaximum)) { [weak device] result in
-                guard let device else { return }; device.writesInFlight = max(0, device.writesInFlight - 1)
-                guard device.volumeRevision == revision, device.connected else { return }
-                if case .success = result { device.confirmedVolume = requested }
+            self.ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "volume", value: ControlMath.rawValue(fraction: requested, maximum: device.volumeMaximum)) { [weak self, weak device] result in
+                guard let self, let device else { completion(false); return }
+                defer { self.reconcileControlsIfNeeded(device) }
+                device.writesInFlight = max(0, device.writesInFlight - 1)
+                guard device.volumeRevision == revision, device.connected else {
+                    self.reconcileControlsIfNeeded(device); completion(false); return
+                }
+                if case .success = result { device.confirmedVolume = requested; device.rememberVolume(); completion(true) }
                 else if case .failure(let error) = result {
                     device.volume = device.confirmedVolume; device.error = error.localizedDescription
+                    completion(false)
                 }
             }
         }
@@ -375,7 +454,141 @@ struct DisplayMode: Identifiable {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
+    func toggleMute(_ device: DisplayDevice) {
+        guard canConfigureDDC(device), let volume = device.confirmedVolume else { return }
+        device.rememberVolume()
+        setVolume(device, MonitorAudio.toggledVolume(current: volume, remembered: device.volumeBeforeMute))
+    }
+
+    func shortcutKeys(_ action: DisplayShortcut) -> String { shortcutPreferences[action].label }
+
+    @discardableResult func saveShortcut(_ action: DisplayShortcut, binding: ShortcutBinding) -> Bool {
+        do {
+            var preferences = shortcutPreferences
+            try preferences.set(action, binding: binding)
+            return saveShortcutPreferences(preferences)
+        } catch { shortcutEditMessage = error.localizedDescription; return false }
+    }
+
+    @discardableResult func resetShortcuts() -> Bool { saveShortcutPreferences(ShortcutPreferences()) }
+
+    private func saveShortcutPreferences(_ preferences: ShortcutPreferences) -> Bool {
+        guard let updateShortcutRegistration else { shortcutEditMessage = "Keyboard shortcuts are not ready yet."; return false }
+        do {
+            let data = try JSONEncoder().encode(preferences)
+            if let error = updateShortcutRegistration(preferences) {
+                shortcutEditMessage = "\(error) Your previous bindings are still active."
+                return false
+            }
+            if shortcutStorageMessage != nil {
+                shortcutDefaults.set(shortcutDefaults.data(forKey: "shortcutBindings"), forKey: "shortcutBindingsBackup")
+            }
+            shortcutDefaults.set(data, forKey: "shortcutBindings")
+            shortcutPreferences = preferences; shortcutStorageMessage = nil; shortcutEditMessage = nil
+            return true
+        } catch { shortcutEditMessage = error.localizedDescription; return false }
+    }
+
+    /// Returns false when the panel should show why the action could not run.
+    func performShortcut(_ action: DisplayShortcut) -> Bool {
+        guard shortcutsEnabled, !sleeping else { return true }
+        if [.preset1, .preset2, .preset3].contains(action) {
+            let index = Int(action.rawValue - DisplayShortcut.preset1.rawValue)
+            guard presetLibrary.presets.indices.contains(index) else {
+                message = "Save a preset in Presets before using \(shortcutKeys(action))."; return false
+            }
+            let applied = applyPreset(presetLibrary.presets[index])
+            if !applied { message = presetMessage }
+            return applied
+        }
+        guard !controlsBusy else { message = "Wait for the current display change to finish."; return false }
+        let point = NSEvent.mouseLocation
+        guard let target = NSScreen.screens.first(where: { $0.frame.contains(point) }),
+              let number = target.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+              let device = displays.first(where: { $0.displayID == number.uint32Value && $0.connected }) else {
+            message = "No connected display was found under the pointer. Refresh displays and try again."; return false
+        }
+        guard !device.reading, !device.needsControlRead else { message = "\(device.name) is still checking its controls. Try again shortly."; return false }
+        switch action {
+        case .brightnessUp, .brightnessDown:
+            setBrightness(device, device.brightness + (action == .brightnessUp ? 0.05 : -0.05))
+        case .volumeUp, .volumeDown:
+            guard let volume = device.volume else { message = "Monitor volume is unavailable for \(device.name)."; return false }
+            setVolume(device, volume + (action == .volumeUp ? 0.05 : -0.05))
+        case .mute:
+            guard device.volume != nil else { message = "Monitor volume is unavailable for \(device.name)."; return false }
+            guard canConfigureDDC(device) else { message = "Wait for \(device.name)’s volume change to finish."; return false }
+            toggleMute(device)
+        default: return true
+        }
+        return true
+    }
+
+    @discardableResult func savePreset(name: String) -> Bool {
+        guard canSavePreset else { presetMessage = "Wait for display controls to finish, then save."; return false }
+        return editPresets { library in
+            try library.save(name: name, displays: displays.filter(\.connected).map {
+                PresetDisplay(uuid: $0.id, name: $0.name, brightness: $0.confirmedBrightness, volume: $0.confirmedVolume)
+            })
+        }
+    }
+
+    @discardableResult func renamePreset(_ id: UUID, name: String) -> Bool {
+        editPresets { try $0.rename(id: id, name: name) }
+    }
+    func deletePreset(_ id: UUID) { _ = editPresets { $0.delete(id: id) } }
+    private func editPresets(_ edit: (inout PresetLibrary) throws -> Void) -> Bool {
+        guard presetStorageError == nil, applyingPresetName == nil else { return false }
+        do {
+            var library = presetLibrary
+            try edit(&library)
+            let data = try JSONEncoder().encode(library)
+            UserDefaults.standard.set(data, forKey: "displayPresets")
+            presetLibrary = library; presetMessage = nil
+            return true
+        } catch { presetMessage = error.localizedDescription; return false }
+    }
+    func resetUnreadablePresets() {
+        guard presetStorageError != nil else { return }
+        UserDefaults.standard.set(UserDefaults.standard.data(forKey: "displayPresets"), forKey: "displayPresetsBackup")
+        UserDefaults.standard.removeObject(forKey: "displayPresets")
+        presetLibrary = PresetLibrary(); presetStorageError = nil; presetMessage = "Created an empty library. The unreadable data was backed up locally."
+    }
+
+    @discardableResult func applyPreset(_ preset: DisplayPreset) -> Bool {
+        guard canSavePreset else { presetMessage = "Wait for display controls to finish, then apply."; return false }
+        let available = Dictionary(uniqueKeysWithValues: displays.filter(\.connected).map { ($0.id, $0.confirmedVolume != nil) })
+        let plan = PresetPlan(preset: preset, available: available)
+        guard !plan.steps.isEmpty else { presetMessage = "None of this preset’s displays are connected."; return false }
+        presetProgress = PresetProgress(steps: plan.steps)
+        presetSteps = plan.steps; presetSkipped = plan.skippedControls
+        applyingPresetName = preset.name; presetMessage = nil
+        runNextPresetStep()
+        return true
+    }
+
+    private func runNextPresetStep() {
+        guard let progress = presetProgress, !presetSteps.isEmpty else { return }
+        let step = presetSteps.removeFirst()
+        let complete: (Bool) -> Void = { [weak self] success in
+            guard let self, self.presetProgress?.finish(token: progress.token, step: step.id, success: success) == true else { return }
+            if let current = self.presetProgress, current.pending.isEmpty {
+                let name = self.applyingPresetName ?? "Preset"
+                let skipped = self.presetSkipped > 0 ? " \(self.presetSkipped) unavailable controls skipped." : ""
+                self.presetMessage = current.failures == 0 ? "Applied “\(name)”.\(skipped)" : "“\(name)” finished with \(current.failures) failed changes. Check the display errors.\(skipped)"
+                self.message = self.presetMessage
+                self.presetProgress = nil; self.applyingPresetName = nil
+            } else { self.runNextPresetStep() }
+        }
+        guard let device = displays.first(where: { $0.id == step.displayUUID && $0.connected }) else { complete(false); return }
+        switch step.control {
+        case .brightness: writeBrightness(device, step.value, completion: complete)
+        case .volume: writeVolume(device, step.value, completion: complete)
+        }
+    }
+
     func setSoftwareOnly(_ device: DisplayDevice, _ value: Bool) {
+        guard canConfigureDDC(device) else { return }
         device.revision += 1; device.brightnessRevision += 1
         device.pendingBrightness?.cancel(); device.pendingBrightness = nil
         device.forceSoftware = value
@@ -385,8 +598,8 @@ struct DisplayMode: Identifiable {
     }
 
     func canConfigureDDC(_ device: DisplayDevice) -> Bool {
-        device.connected && !device.reading && !device.writing && device.pendingBrightness == nil &&
-        device.pendingVolume == nil && !connectionBusy && pendingResolution == nil
+        device.connected && !device.reading && !device.writing && !device.needsControlRead && device.pendingBrightness == nil &&
+        device.pendingVolume == nil && !controlsBusy && !sleeping
     }
 
     func retryDDC(_ device: DisplayDevice) {
@@ -420,7 +633,7 @@ struct DisplayMode: Identifiable {
     }
 
     func toggleConnection(_ device: DisplayDevice, enabled: Bool) {
-        guard !connectionBusy, pendingResolution == nil else { return }
+        guard !controlsBusy, !sleeping else { return }
         guard ControlMath.mayDisconnect(isEnabled: !enabled, activeCount: activeCount, pending: connectionBusy) else { device.error = "Keep at least one display connected."; return }
         device.error = nil; connectionBusy = true
         connectionRevision += 1
@@ -456,7 +669,7 @@ struct DisplayMode: Identifiable {
     }
 
     func changeResolution(_ device: DisplayDevice, mode: DisplayMode) {
-        guard pendingResolution == nil, !connectionBusy, device.connected,
+        guard !controlsBusy, !sleeping, device.connected,
               mode.id != device.currentModeID, let original = CGDisplayCopyDisplayMode(device.displayID) else { return }
         guard UserDefaults.standard.dictionary(forKey: "resolutionRecovery") == nil else {
             unresolvedRecovery = true
@@ -529,7 +742,7 @@ struct DisplayMode: Identifiable {
         if pendingResolution == nil { recoverSavedResolution() }
         for device in displays {
             device.softwareFraction = 1
-            if device.connected && device.brightness < ControlMath.softwareThreshold { setBrightness(device, 0.6) }
+            if device.connected && device.brightness < ControlMath.softwareThreshold { writeBrightness(device, 0.6) }
         }
         dimming.removeAll(); scheduleRefresh()
     }
@@ -549,10 +762,17 @@ struct DisplayMode: Identifiable {
     }
 
     private func cancelControlEdits() {
+        if let name = applyingPresetName {
+            presetMessage = "“\(name)” was interrupted. Some changes may already have reached the monitors."
+            message = presetMessage
+        }
+        presetProgress = nil; presetSteps = []; applyingPresetName = nil
         for device in displays {
+            device.needsControlRead = true
             device.revision += 1; device.brightnessRevision += 1; device.volumeRevision += 1
             device.pendingBrightness?.cancel(); device.pendingBrightness = nil
             device.pendingVolume?.cancel(); device.pendingVolume = nil
+            device.brightness = device.confirmedBrightness; device.volume = device.confirmedVolume
         }
     }
 

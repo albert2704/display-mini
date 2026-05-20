@@ -51,7 +51,9 @@ The assertion runner in `Tests/DisplayCoreTests` currently exercises:
 
 The fixtures use synthetic serial numbers. The tests do not call macOS configuration APIs, run the monitor helper, or assert physical screen behavior. Extend tests for a new pure rule or concrete regression; do not equate a passing parser test with hardware compatibility.
 
-`Tests/DDCProcessTests` launches temporary shell fixtures to test success, missing helper, nonzero exit, output overflow, timeout, and an inherited pipe held by a child. `Tests/HelperTests` compiles selected helper functions and tests packet validation, EDID matching, duplicate identities, selectors, and delay bounds without doing monitor I/O. `scripts/test.sh` runs all three suites. SwiftPM's `ControlChecks` runs only the pure Swift suite.
+`Tests/DDCProcessTests` launches temporary shell fixtures to test success, missing helper, nonzero exit, output overflow, timeout, and an inherited pipe held by a child. `Tests/HelperTests` compiles selected helper functions and tests packet validation, EDID matching, duplicate identities, selectors, and delay bounds without doing monitor I/O. `scripts/test.sh` runs all four suites. SwiftPM's `ControlChecks` runs only the pure Swift suite.
+
+`Tests/DisplayStoreTests` compiles the production store against native/DDC substitutes. It drives real debounce and completion paths without monitor I/O: sequential preset writes, partial failure, canceled late replies, reconciliation before saving, mute rollback, recovery writes, and shortcut guards. Nine additional shortcut scenarios cover validation, failed-edit rollback, reset/recovery/event dispatch, independent conflicts, persistence, keyboard recording, invalid input and cancel, foreground/editor scope, and capturing registered keys without display actions. Tests inject a registrar, isolated UserDefaults and synthetic AppKit events; the lifecycle scenario also installs a local monitor and posts blur notifications to check cleanup. They do not register global hotkeys. `DisplayStore(startMonitoring: false)` skips automatic OS observation/recovery during this fixture setup.
 
 ## Manual hardware validation
 
@@ -65,6 +67,11 @@ Perform these checks only on a setup where display changes are authorized and an
 | Brightness | Correct screen changes; reported state updates; rejected writes show an error. |
 | Low brightness and recovery | Software dimming appears; the shortcut removes it and restores a readable level. |
 | Monitor volume | Physical monitor volume changes and readback confirms the value. |
+| Mute and unmute | Zero is confirmed, then the previous positive volume returns; a failed write rolls back. |
+| Preset lifecycle | Save, rename, apply, relaunch and delete; verify all matching screens and no others. |
+| Preset interruption | Restore/sleep/hotplug stops remaining steps; controls reconcile after a late write. |
+| Everyday shortcuts | Pointer-targeted actions, first three preset slots, enable switch, change/reset keys and conflicts; custom recovery and the fixed fallback work when everyday keys are off. |
+| Keyboard recording | Record a combination, review and Save; reject duplicate/reserved keys; Escape, Stop, app/window blur and editor closure stop listening; existing registered keys do not run actions in the foreground editor. |
 | Response timing | Switching Standard/Slow changes the reported wait to 50/150 ms and starts read-only detection. |
 | Diagnostics | Brightness and volume show separate results, attempts, ranges and the last check time. |
 | Copy Report | Copies safe diagnostic fields without UUID, serial, display name or registry/local path. |
