@@ -6,3 +6,8 @@ Vendor/m1ddc
 .swiftpm/
 *.xcuserstate
 *.xcuserdatad/
+tooling/docs/walkthrough/assets/
+tooling/docs/walkthrough/.hyperframes/
+tooling/docs/walkthrough/.media/
+tooling/docs/walkthrough/renders/
+tooling/docs/walkthrough/snapshots/
