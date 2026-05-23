@@ -1,8 +1,31 @@
 # User guide
 
+## Quick start
+
+1. Open Display Mini and click its monitor icon in the menu bar.
+2. Adjust brightness or resolution under the screen you want to control. External volume and mute appear when supported.
+3. Open the sliders button in the footer to save your current levels as a preset.
+4. Open the keyboard button, choose an action, click **Record Shortcut**, and press a combination containing Control or Command.
+5. Review the captured keys and click **Save**. Point at the screen you want to control before using its shortcut.
+
+[![Captioned walkthrough of Display Mini controls, presets, and shortcut recording](media/walkthrough.gif)](media/walkthrough.mp4)
+
+[Download the silent MP4](media/walkthrough.mp4). All images and video show native interface examples from 0.3.0 with sample data. They illustrate the workflow and do not certify support for a particular display.
+
+| Time | Walkthrough transcript |
+| --- | --- |
+| 0:00 | Open the compact panel to adjust brightness, resolution and supported monitor speakers. |
+| 0:05 | Set your levels, name a preset, and use Save Current. Apply it again when needed. |
+| 0:10 | Open keyboard settings and click the action's current shortcut. |
+| 0:13 | Click Record Shortcut. You can also choose keys and modifiers manually. |
+| 0:16 | Press a supported combination containing Control or Command. Escape cancels. |
+| 0:19 | Review the captured keys, then Save. Conflicting assignments show a message. |
+
 ## Connection diagnostics and response timing
 
 Open **Monitor Controls…** on an external display. The panel shows its current brightness method and whether monitor volume has responded. **Standard** waits 50 ms for DDC replies; **Slow** waits 150 ms and can help slower monitors. Timing is remembered for each display. Selecting a profile starts a read-only check without changing monitor settings.
+
+<img src="media/diagnostics.png" width="340" alt="Sample monitor control panel with response timing and separate brightness and volume diagnostics">
 
 The diagnostics section lists the verified DDC route, matching service count, response wait and last check time. Brightness and volume have separate outcomes. **Responding** includes the raw current/maximum and attempts. **Not supported by monitor** means an explicit unsupported reply; **No valid reply** means communication failed and does not establish whether the feature exists.
 
@@ -13,6 +36,10 @@ Software dimming remains available when the connection cannot be uniquely matche
 ## The panel
 
 Click the monitor icon in the menu bar. Each known display has a title row with its name and connection switch. Built in displays show brightness and resolution. External displays also show monitor controls and volume.
+
+<img src="media/panel.png" width="300" alt="Main panel with individual controls for a built-in display and an external display">
+
+The footer buttons, from left to right after the app name, open **Presets**, open **Keyboard Shortcuts**, **Restore Displays**, **Refresh Displays**, and **Quit**.
 
 Values come from macOS or the monitor. Detection may take a moment. An unavailable control stays disabled instead of displaying a made up measured value. The panel refreshes when screens change, after wake, and when you use Refresh.
 
@@ -47,6 +74,8 @@ A failed write shows an error and restores the previous displayed value. Moving 
 
 Open **Presets** using the sliders icon in the footer. Set your brightness and monitor volume first, enter a name such as Work or Evening, and choose **Save Current**. Each preset saves the confirmed levels for every connected display. Saving waits for detection and pending writes to finish.
 
+<img src="media/presets.png" width="380" alt="Two example presets, Work and Evening, each showing saved screen levels and apply, rename and delete buttons">
+
 You can save up to 12 presets. Names must be unique, 1–40 characters, and contain no control characters. Each row shows the screens and levels it contains. Use **Apply**, the pencil to rename, or the trash button to delete. To replace levels, delete the old preset and save a new snapshot.
 
 Applying matches each saved screen by its display UUID, not its name or list position. A missing screen or unavailable volume control is skipped and counted in the result. New screens not in the preset stay unchanged. If no saved screens are connected, nothing is changed. The app reports write failures and keeps the per-display error available to inspect.
@@ -59,6 +88,8 @@ Presets are local to this Mac and survive relaunch. If saved data cannot be read
 
 Brightness, volume and mute target the screen under the pointer. An unavailable control produces a message instead of changing a different screen. The keyboard button in the footer lists your current keys, lets you edit each action, and shows any registration conflicts. The table below lists the defaults.
 
+<img src="media/shortcuts.png" width="380" alt="Keyboard settings listing the nine default actions, everyday-shortcut switch and reset button">
+
 | Keys | Action |
 | --- | --- |
 | Control + Option + Command + ↑ / ↓ | Brightness up / down, 5 percentage points |
@@ -70,6 +101,10 @@ Brightness, volume and mute target the screen under the pointer. An unavailable 
 Preset shortcuts affect all matching screens in the preset, regardless of pointer location. Deleting a preset shifts the following shortcut positions. Brightness and volume clamp at their limits. Unsupported monitor volume, including Mac speakers, is not redirected elsewhere.
 
 To change a shortcut, click its key combination, click **Record Shortcut**, and press the combination on your keyboard. Review the captured keys, then click **Save**. **Escape** or **Stop Recording** cancels capture without changing the draft. Closing the editor or switching away stops recording. You can still select a key from the compact grouped menu and choose Control/Option/Shift/Command manually.
+
+| 1. Start recording | 2. Press the keys | 3. Review and Save |
+| --- | --- | --- |
+| <img src="media/shortcut-editor.png" width="230" alt="Shortcut editor with the Record Shortcut button"> | <img src="media/shortcut-listening.png" width="230" alt="Recorder listening for a combination, with Stop Recording and an Escape hint"> | <img src="media/shortcut-recorded.png" width="230" alt="Control Shift K captured in the draft, with Save available"> |
 
 Include at least Control or Command. Letters, digits, arrows, F1–F12, Space, Home/End and Page Up/Down are supported. Unsupported combinations show a message and keep listening. Modifier keys alone do not finish recording. Labels describe US physical keyboard positions; some keyboards require Fn for function keys. **Default** fills the current action's original binding; **Reset All to Defaults** restores the whole set.
 
