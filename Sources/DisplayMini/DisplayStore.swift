@@ -8,6 +8,10 @@ struct DisplayMode: Identifiable {
     var id: Int32 { native.ioDisplayModeID }
     var descriptor: ModeDescriptor { .init(id: id, width: native.width, height: native.height, pixelWidth: native.pixelWidth, refresh: native.refreshRate) }
     var size: String { "\(native.width) × \(native.height)" }
+    var favorite: FavoriteResolution? {
+        .init(width: native.width, height: native.height, pixelWidth: native.pixelWidth,
+              pixelHeight: native.pixelHeight, refresh: native.refreshRate)
+    }
     var detail: String {
         let density = descriptor.hiDPI ? "HiDPI" : "Standard"
         return native.refreshRate > 0 ? "\(density) · \(Int(native.refreshRate.rounded())) Hz" : density
@@ -19,6 +23,7 @@ struct DisplayMode: Identifiable {
     var displayID: CGDirectDisplayID
     let builtIn: Bool
     @Published var name: String
+    @Published var systemName: String
     @Published var connected = true
     @Published var brightness = 1.0
     @Published var volume: Double?
@@ -63,7 +68,7 @@ struct DisplayMode: Identifiable {
     }
 
     init(id: String, displayID: CGDirectDisplayID, name: String, builtIn: Bool) {
-        self.id = id; self.displayID = displayID; self.name = name; self.builtIn = builtIn
+        self.id = id; self.displayID = displayID; self.name = name; self.systemName = name; self.builtIn = builtIn
         self.forceSoftware = UserDefaults.standard.bool(forKey: "forceSoftware.\(id)")
         self.ddcTiming = DDCTiming(saved: UserDefaults.standard.string(forKey: "ddcTiming.\(id)"))
     }
@@ -90,6 +95,10 @@ struct DisplayMode: Identifiable {
     let shortcutRecorder = ShortcutRecorder()
     var updateShortcutRegistration: ((ShortcutPreferences) -> String?)?
     private let shortcutDefaults: UserDefaults
+    @Published private(set) var personalization = DisplayPersonalization()
+    @Published private(set) var personalizationStorageError: String?
+    @Published var personalizationMessage: String?
+    private let personalizationDefaults: UserDefaults
     private var presetProgress: PresetProgress?
     private var presetSteps: [PresetPlan.Step] = []
     private var presetSkipped = 0
@@ -122,8 +131,13 @@ struct DisplayMode: Identifiable {
     }
     var activeCount: Int { displays.filter(\.connected).count }
 
-    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard) {
+    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard, personalizationDefaults: UserDefaults = .standard) {
         self.shortcutDefaults = shortcutDefaults
+        self.personalizationDefaults = personalizationDefaults
+        if let data = personalizationDefaults.data(forKey: "displayPersonalization") {
+            do { personalization = try DisplayPersonalization.decode(data) }
+            catch { personalizationStorageError = error.localizedDescription }
+        }
         if let data = shortcutDefaults.data(forKey: "shortcutBindings") {
             do { shortcutPreferences = try ShortcutPreferences.decode(data) }
             catch { shortcutStorageMessage = error.localizedDescription }
@@ -176,7 +190,8 @@ struct DisplayMode: Identifiable {
             guard CGDisplayIsOnline(displayID) != 0 || existing != nil || ownedDisconnects.contains(uuid) else { continue }
             let device = existing ?? DisplayDevice(id: uuid, displayID: displayID, name: builtIn ? "Built-in Display" : "External Display", builtIn: builtIn)
             device.displayID = displayID
-            if let screen = screen(for: device) { device.name = builtIn ? "Built-in Display" : screen.localizedName }
+            if let screen = screen(for: device) { device.systemName = builtIn ? "Built-in Display" : screen.localizedName }
+            device.name = personalization.entry(for: uuid).name ?? device.systemName
             device.connected = CGDisplayIsOnline(displayID) != 0
             if device.connected {
                 loadModes(device)
@@ -294,6 +309,69 @@ struct DisplayMode: Identifiable {
             native.currentID(for: $0.id).map { CGDisplayIsOnline($0) != 0 && CGDisplayIsActive($0) != 0 } == true }) {
             refresh()
         }
+    }
+
+    func displayName(for uuid: String, fallback: String) -> String {
+        personalization.entry(for: uuid).name ?? displays.first(where: { $0.id == uuid })?.systemName ?? fallback
+    }
+
+    @discardableResult func renameDisplay(_ device: DisplayDevice, name: String) -> Bool {
+        editPersonalization { try $0.rename(uuid: device.id, name: name) }
+    }
+
+    func favoriteModes(_ device: DisplayDevice) -> [DisplayMode] {
+        guard device.connected else { return [] }
+        return personalization.entry(for: device.id).favorites.compactMap { favorite in
+            device.modes.first { $0.favorite == favorite }
+        }
+    }
+
+    @discardableResult func setFavorite(_ device: DisplayDevice, mode: FavoriteResolution, enabled: Bool) -> Bool {
+        guard !enabled || (device.connected && device.modes.contains(where: { $0.favorite == mode })) else {
+            personalizationMessage = "This resolution is no longer available. Refresh the display and try again."
+            return false
+        }
+        return editPersonalization { try $0.setFavorite(uuid: device.id, mode: mode, enabled: enabled) }
+    }
+
+    func applyFavorite(_ device: DisplayDevice, favorite: FavoriteResolution) {
+        guard !controlsBusy, !sleeping else { return }
+        guard device.connected, displays.contains(where: { $0 === device }),
+              personalization.entry(for: device.id).favorites.contains(favorite),
+              let currentID = native.currentID(for: device.id), currentID == device.displayID else {
+            message = "This favorite resolution is not currently available."
+            return
+        }
+        let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
+        let modes = CGDisplayCopyAllDisplayModes(currentID, options) as? [CGDisplayMode] ?? []
+        guard let mode = modes.filter({ $0.isUsableForDesktopGUI() }).map({ DisplayMode(native: $0) })
+            .first(where: { $0.favorite == favorite }) else {
+            message = "This favorite resolution is not currently available."
+            return
+        }
+        changeResolution(device, mode: mode)
+    }
+
+    private func editPersonalization(_ edit: (inout DisplayPersonalization) throws -> Void) -> Bool {
+        guard personalizationStorageError == nil else { return false }
+        do {
+            var updated = personalization
+            try edit(&updated)
+            let data = try JSONEncoder().encode(updated)
+            personalizationDefaults.set(data, forKey: "displayPersonalization")
+            personalization = updated; personalizationMessage = nil
+            for device in displays { device.name = updated.entry(for: device.id).name ?? device.systemName }
+            return true
+        } catch { personalizationMessage = error.localizedDescription; return false }
+    }
+
+    func resetUnreadablePersonalization() {
+        guard personalizationStorageError != nil else { return }
+        personalizationDefaults.set(personalizationDefaults.data(forKey: "displayPersonalization"), forKey: "displayPersonalizationBackup")
+        personalizationDefaults.removeObject(forKey: "displayPersonalization")
+        personalization = DisplayPersonalization(); personalizationStorageError = nil
+        personalizationMessage = "Created empty display settings. The unreadable data was backed up locally."
+        for device in displays { device.name = device.systemName }
     }
 
     private func loadModes(_ device: DisplayDevice) {
