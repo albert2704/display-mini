@@ -25,6 +25,8 @@ No server, network request, account, or external runtime is involved. The app is
 | --- | --- |
 | `Sources/DisplayMini/AppMain.swift` | App lifecycle, status item, popover, duplicate instance handling, shortcut dispatch and preference subscription. |
 | `Sources/DisplayMini/PanelView.swift` | Display cards, control bindings, DDC settings, resolution confirmation, footer. |
+| `Sources/DisplayMini/DisplaySettingsView.swift` | Custom screen name editor and available/saved resolution stars. |
+| `Sources/DisplayCore/DisplayPersonalization.swift` | Validated names and favorite descriptors, schema and storage limits. |
 | `Sources/DisplayMini/ShortcutPreferences.swift` | Validated bindings, supported physical keys, modifier mapping and defaults. |
 | `Sources/DisplayMini/ShortcutController.swift` | Carbon registration lifecycle, validated hotkey IDs, per-action conflict reports. |
 | `Sources/DisplayMini/PresetsView.swift`, `ShortcutsView.swift` | Preset management and shortcut reference/settings. |
@@ -45,6 +47,12 @@ A stable UUID identifies a device in the app. When macOS omits that UUID after d
 Display IDs are transient. Do not hardcode them, assume list order is stable, or use the first monitor as a substitute for the requested screen.
 
 The DDC helper enumerates up to 64 online CoreGraphics IDs. Metadata is optional and initialized before use. It dynamically resolves `IOAVServiceCopyEDID`, validates each external service's EDID header and base block checksum, and matches vendor/model/serial to the requested screen. Uniqueness is checked against all online IDs, including screens without registry metadata. Multiple matching services or duplicate identities are rejected. The framebuffer and DCP proxy need not share a subtree. MCDP29xx keeps its existing 0xB7 address; other matched services use 0x37.
+
+## Display personalization
+
+`displayPersonalization` stores a schema 1 document with canonical display UUIDs, optional names and ordered favorite resolution descriptors. Native names remain separate from aliases. Refresh reapplies aliases without changing hardware identity; preset labels prefer current names or aliases and retain the saved name as a fallback.
+
+Favorite identity combines logical and pixel dimensions with refresh rounded to millihertz. Native mode IDs are never persisted. Applying a favorite rechecks the current display ID, reads current modes, resolves the descriptor, and calls the existing resolution preview. Missing favorites remain saved but cannot be applied. Invalid documents are preserved and block edits until an explicit backup/reset. The store accepts isolated defaults for tests and documentation.
 
 ## Brightness and volume
 

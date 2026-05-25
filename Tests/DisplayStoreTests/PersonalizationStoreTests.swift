@@ -19,6 +19,9 @@ import DisplayCore
         precondition(restored.displayName(for: device.id, fallback: "Disconnected screen") == "Desk")
         precondition(store.renameDisplay(device, name: ""))
         precondition(device.name == "Original screen")
+        let unidentified = DisplayDevice(id: "display-999", displayID: 0, name: "Unknown", builtIn: false)
+        precondition(!store.renameDisplay(unidentified, name: "Cannot route by display ID"))
+        precondition(store.personalizationMessage?.contains("no stable identity") == true)
 
         let mode = FavoriteResolution(width: 1920, height: 1080, pixelWidth: 1920, pixelHeight: 1080, refresh: 60)!
         precondition(!store.setFavorite(device, mode: mode, enabled: true), "Cannot star a stale or invented mode")

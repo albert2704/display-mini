@@ -162,7 +162,7 @@ private struct DisplayCard: View {
                                                 if let favorite = mode.favorite { store.applyFavorite(device, favorite: favorite) }
                                             } label: {
                                                 Label("\(mode.size) · \(mode.favorite?.detail ?? mode.detail)",
-                                                      systemImage: mode.id == device.currentModeID ? "checkmark" : "star.fill")
+                                                      systemImage: mode.favorite == device.currentMode?.favorite ? "checkmark" : "star.fill")
                                             }
                                         }
                                     }
