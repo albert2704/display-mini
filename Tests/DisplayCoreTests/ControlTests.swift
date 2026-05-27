@@ -33,6 +33,7 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         suite.testPresetDataRejectsCorruption()
         suite.testPresetPlanSkipsMissingAndUnsupportedControls()
         suite.testPresetProgressRejectsDuplicateAndStaleCallbacks()
+        PersonalizationTests.run()
         print("Passed 19 control tests (\(checks) assertions).")
     }
 

@@ -43,6 +43,21 @@ The footer buttons, from left to right after the app name, open **Presets**, ope
 
 Values come from macOS or the monitor. Detection may take a moment. An unavailable control stays disabled instead of displaying a made up measured value. The panel refreshes when screens change, after wake, and when you use Refresh.
 
+## Screen names and favorite resolutions
+
+Click the **gear beside a screen's name** to open Display Settings. Enter a label such as Desk Display and choose **Save Name**. **Use System Name**, or saving an empty name, restores the original label. Names can contain up to 40 characters and appear in controls and preset labels. They do not change the monitor's name in macOS Settings.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/display-settings-dark.png">
+  <img src="media/display-settings.png" width="360" alt="Display Settings with the custom name Desk Display and two starred resolutions">
+</picture>
+
+Choose **Star Current Resolution**, or click a star beside an available resolution. Up to 32 favorites can be saved for each screen. Available favorites appear at the top of that screen's resolution menu. Selecting one starts the usual 15 second **Keep** or **Revert** preview; selecting the current mode does nothing.
+
+Starring or removing a favorite saves a preference without switching modes. A favorite that is temporarily unavailable stays in Display Settings with an **Unavailable** label and can still be removed. Its dimensions, pixel density and refresh rate must match a mode currently reported by macOS before it can be selected.
+
+Names and favorites stay on this Mac and follow the display UUID. If a different cable, dock or screen reports a different UUID, it will not inherit another screen's settings. An unidentified screen cannot save these preferences until its stable identity is available. Unreadable saved data is preserved; **Back Up and Reset Display Settings** starts fresh while keeping a local backup. It resets only names and favorites.
+
 ## Brightness
 
 **Combined** means hardware brightness and software dimming share one slider:

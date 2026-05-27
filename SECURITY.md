@@ -16,6 +16,8 @@ Those records include display UUIDs, vendor/model/serial identities, software di
 
 Shortcut recording uses a local AppKit event monitor only during an explicit recording session in the foreground editor. It stops on capture, cancel, app/window blur, editor closure or shutdown. It does not install a global keyboard monitor, request Accessibility/Input Monitoring access, or save typed text. Only the selected binding is persisted after Save.
 
+Custom display names and favorite resolution descriptors are also stored locally under `displayPersonalization`, keyed by display UUID. Descriptors contain dimensions, pixel dimensions and refresh rate, not transient mode IDs. Names and stars are never added to copied diagnostic reports. Resetting unreadable settings retains the original data under `displayPersonalizationBackup`.
+
 ## Process and OS boundaries
 
 DDC commands go to a helper bundled inside the app. The helper path is absolute, and arguments are passed to Process as an array. The app does not invoke a shell to construct monitor commands. Monitor processes have bounded timeouts.

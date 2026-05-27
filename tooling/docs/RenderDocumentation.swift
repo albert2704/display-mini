@@ -56,7 +56,7 @@ extension ShortcutRecorder {
         NSApplication.shared.setActivationPolicy(.prohibited)
         defer { DocumentationDefaults.shared.removePersistentDomain(forName: DocumentationDefaults.domain) }
         let output = URL(fileURLWithPath: CommandLine.arguments[1])
-        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared)
+        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared, personalizationDefaults: DocumentationDefaults.shared)
         store.seedDocumentation()
         try render(PanelView(store: store), size: .init(width: 300, height: 412), name: "panel", output: output)
         try render(PresetsView(store: store), size: .init(width: 380, height: 440), name: "presets", output: output)
@@ -71,15 +71,21 @@ extension ShortcutRecorder {
         store.shortcutRecorder.documentationState(recorded: recorded.label)
         try render(ShortcutsView(documenting: store, binding: recorded),
                    size: .init(width: 380, height: 520), name: "shortcut-recorded", output: output)
-        print("Rendered 7 native UI examples with isolated sample data.")
+        let external = store.displays[1]
+        precondition(store.renameDisplay(external, name: "Desk Display"))
+        precondition(store.setFavorite(external, mode: external.modes[1].favorite!, enabled: true))
+        precondition(store.setFavorite(external, mode: external.modes[0].favorite!, enabled: true))
+        try render(DisplaySettingsView(device: external, store: store), size: .init(width: 360, height: 560), name: "display-settings", output: output)
+        try render(DisplaySettingsView(device: external, store: store), size: .init(width: 360, height: 560), name: "display-settings-dark", output: output, dark: true)
+        print("Rendered 9 native UI examples with isolated sample data.")
     }
 
-    @MainActor static func render<V: View>(_ view: V, size: NSSize, name: String, output: URL) throws {
-        let content = view.environment(\.colorScheme, .light).environment(\.controlActiveState, .active)
+    @MainActor static func render<V: View>(_ view: V, size: NSSize, name: String, output: URL, dark: Bool = false) throws {
+        let content = view.environment(\.colorScheme, dark ? .dark : .light).environment(\.controlActiveState, .active)
             .background(Color(nsColor: .windowBackgroundColor))
         let host = NSHostingView(rootView: content)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: .aqua)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         window.contentView = host
         host.frame = NSRect(origin: .zero, size: size)
         host.layoutSubtreeIfNeeded()
