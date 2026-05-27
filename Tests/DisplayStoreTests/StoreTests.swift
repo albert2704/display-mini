@@ -21,12 +21,18 @@ import DisplayCore
 }
 enum DDCFailure: LocalizedError { case rejected; var errorDescription: String? { "Simulated failure" } }
 @MainActor final class DDCClient {
-    struct Write { let attribute: String; let value: Int; let finish: (Result<Void, DDCFailure>) -> Void }
+    struct Write { let uuid: String; let attribute: String; let value: Int; let finish: (Result<Void, DDCFailure>) -> Void }
     var writes: [Write] = []
     var reads: [(Result<DDCProbe, DDCFailure>) -> Void] = []
+    var advancedReads: [(Result<AdvancedDDCProbe, DDCFailure>) -> Void] = []
+    var inputs: [Write] = []
     func read(uuid: String, timing: DDCTiming, completion: @escaping (Result<DDCProbe, DDCFailure>) -> Void) { reads.append(completion) }
     func write(uuid: String, timing: DDCTiming, attribute: String, value: Int, completion: @escaping (Result<Void, DDCFailure>) -> Void) {
-        writes.append(.init(attribute: attribute, value: value, finish: completion))
+        writes.append(.init(uuid: uuid, attribute: attribute, value: value, finish: completion))
+    }
+    func readAdvanced(uuid: String, timing: DDCTiming, completion: @escaping (Result<AdvancedDDCProbe, DDCFailure>) -> Void) { advancedReads.append(completion) }
+    func sendInput(uuid: String, timing: DDCTiming, input: MonitorInput, completion: @escaping (Result<Void, DDCFailure>) -> Void) {
+        inputs.append(.init(uuid: uuid, attribute: "input", value: input.rawValue, finish: completion))
     }
 }
 
@@ -39,6 +45,7 @@ enum DDCFailure: LocalizedError { case rejected; var errorDescription: String? {
         shortcutGuards()
         ShortcutTests.run()
         PersonalizationStoreTests.run()
+        await AdvancedStoreTests.run()
         print("Passed 5 store orchestration scenarios (sequential apply, canceled write reconciliation, mute rollback, slow recovery, shortcut guards).")
     }
     static let uuid = "00000000-0000-4000-8000-00000000F001"
