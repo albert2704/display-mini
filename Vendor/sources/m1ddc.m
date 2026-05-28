@@ -154,6 +154,7 @@ static NSDictionary *probeControl(DDCTransport *transport, UInt8 feature) {
     }
     // Input is noncontinuous: its maximum is often zero, not a numeric range.
     if (feature != INPUT && value.curValue >= 0 && (value.maxValue <= 0 || value.curValue > value.maxValue)) { status = @"invalidRange"; }
+    if (feature == INPUT && value.curValue == 0) { status = @"invalidRange"; }
     NSMutableDictionary *result = [@{@"status": status, @"attempts": @(attempts)} mutableCopy];
     if (value.curValue >= 0) { result[@"current"] = @(value.curValue); result[@"maximum"] = @(value.maxValue); }
     if (ioError != 0) { result[@"errorCode"] = @((UInt32)ioError); }

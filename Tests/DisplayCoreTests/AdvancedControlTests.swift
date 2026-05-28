@@ -12,6 +12,9 @@ enum AdvancedControlTests {
         }
         precondition(parse(good)?.contrast.fraction == 0.5)
         precondition(parse(good)?.currentInput == 17, "Input is noncontinuous; zero maximum is valid")
+        var zeroInput = good; zeroInput["input"] = ["status": "ok", "attempts": 1, "current": 0, "maximum": 0]
+        precondition(parse(zeroInput)?.currentInput == nil && parse(zeroInput)?.contrast.fraction == 0.5,
+                     "Zero is not an identified input and must never enable switching")
         for (key, bad) in [("schema", 2 as Any), ("uuid", UUID().uuidString), ("delayMS", 150), ("serviceCount", 2), ("transport", "ambiguous")] {
             var json = good; json[key] = bad
             precondition(parse(json) == nil, "Reject mismatched \(key)")

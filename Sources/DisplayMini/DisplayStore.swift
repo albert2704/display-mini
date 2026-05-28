@@ -619,7 +619,7 @@ struct DisplayMode: Identifiable {
               let device = displays.first(where: { $0.displayID == number.uint32Value && $0.connected }) else {
             message = "No connected display was found under the pointer. Refresh displays and try again."; return false
         }
-        guard !device.reading, !device.needsControlRead else { message = "\(device.name) is still checking its controls. Try again shortly."; return false }
+        guard !device.reading, !device.needsControlRead, !device.advancedBusy else { message = "\(device.name) is still checking its controls. Try again shortly."; return false }
         switch action {
         case .brightnessUp, .brightnessDown:
             setBrightness(device, device.brightness + (action == .brightnessUp ? 0.05 : -0.05))
