@@ -9,7 +9,8 @@
 | Monitor compatibility and connection diagnostics | Shipped | [0002](../specs/0002-monitor-compatibility.md) |
 | Built-in recovery after unplug | Shipped; user confirmed live recovery | Existing recovery implementation and tests |
 | Everyday controls | In progress | [0003](../specs/0003-everyday-controls.md) |
-| Custom screen names and favorite resolutions | Built; awaiting merge | [0004](../specs/0004-display-personalization.md) |
+| Custom screen names and favorite resolutions | Shipped in PR #5 | [0004](../specs/0004-display-personalization.md) |
+| Advanced tab and controls | Built; awaiting PR and CI | [0005](../specs/0005-advanced-controls.md) |
 
 ## Everyday controls
 
@@ -36,7 +37,17 @@ Display personalization adds local screen aliases and favorites while reusing th
 - [x] Build names, favorites, persistence and the native settings controls.
 - [x] Run seven new regression scenarios and the existing test suites.
 - [x] Verify native name/star persistence and inspect light/dark layouts; update guides.
-- [ ] Merge [PR #5](https://github.com/albert2704/display-mini/pull/5).
+- [x] Merge [PR #5](https://github.com/albert2704/display-mini/pull/5).
+
+## Advanced controls
+
+The user requested DisplayBuddy-style functionality in a separate Advanced tab. Code in `AdvancedView.swift`, `AdvancedControls.swift`, the store and helper adds linked brightness, hardware contrast, standard input switching and refresh rate selection.
+
+- [x] Record behavior and value sources in spec 0005.
+- [x] Build the tab, monitor probe and guarded actions.
+- [x] Add model, store and subprocess regression coverage.
+- [x] Complete native verification, screenshots and documentation. [Results and limits](../reviews/2026-10-10-advanced-controls.md).
+- [ ] Publish the feature PR and pass CI.
 
 ## Deferred
 

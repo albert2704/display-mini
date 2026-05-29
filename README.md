@@ -3,7 +3,7 @@
 [![Build and checks](https://github.com/albert2704/display-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/albert2704/display-mini/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small, open source macOS menu bar app for **brightness, resolution, monitor volume, presets, and keyboard shortcuts**. Control each screen from one compact panel, or record a shortcut for the controls you use every day.
+A small, open source macOS menu bar app for **brightness, resolution, monitor volume, presets, and keyboard shortcuts**, with an **Advanced tab** for contrast, input switching, linked brightness and refresh rates.
 
 <p align="center">
   <img src="docs/media/panel.png" width="300" alt="Display Mini panel with brightness and resolution for two displays, external speaker volume, mute, and footer controls">
@@ -43,6 +43,11 @@ The silent, captioned walkthrough covers the panel, presets, and recording a sho
 | Resolution | Lists modes reported by macOS, including available HiDPI and refresh variants. A preview reverts after 15 seconds unless kept. |
 | Favorite resolutions | Stars preferred modes per screen and puts available favorites at the top of its resolution menu. |
 | Custom screen names | Labels screens for your setup while preserving their original names and hardware identity. |
+| Advanced tab | Keeps extra display controls in a separate view while preserving the recovery footer. |
+| Linked brightness | Optionally applies brightness edits made in Display Mini to all ready connected screens. |
+| Monitor contrast | Reads the monitor's range and verifies hardware contrast writes on supported connections. |
+| Input switching | Sends standard DDC input commands after confirmation, when the monitor reports an identified current input. |
+| Refresh rate | Chooses rates reported for the current resolution and pixel dimensions, with Keep/Revert. |
 | Connection switch | Disconnects a display from the desktop and reconnects it. The last active display is protected. |
 | Recovery | Reconnects displays disconnected by this app, removes dimming, and retries pending resolution recovery. |
 | Compatibility profiles | Standard or Slow monitor response timing, remembered per display. |
@@ -98,6 +103,17 @@ Brightness, volume and mute target the **screen under your pointer**. Open the k
 
 Open the sliders button in the footer to save, rename, apply or delete presets. See the [user guide](docs/USER_GUIDE.md#presets) for matching and failure behavior.
 
+## Advanced controls
+
+Choose **Advanced** at the top of the panel. Link brightness across screens, change refresh rate while keeping the same resolution, or click **Detect** to check an external monitor's contrast and input support.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/advanced-dark.png">
+  <img src="docs/media/advanced.png" width="300" alt="Advanced tab with linked brightness, refresh rates, hardware contrast, and an input switch with confirmation">
+</picture>
+
+Input choices are common DDC codes, not a detected port inventory. Switching can remove the Mac's picture; use the monitor's buttons to switch back. Support varies, and vendor specific input protocols are not included. [Read the Advanced guide](docs/USER_GUIDE.md#advanced-tab).
+
 ## Recovery shortcut
 
 Press **Control + Option + Command + R**, or click the curved arrow in the footer. Recovery acts on displays and pending changes owned by Display Mini. It does not reset your entire macOS display configuration.
@@ -127,6 +143,8 @@ DDC discovery inspects up to 64 online displays and matches the control service'
 Local checks included app launch, accessibility and visual inspection, native display discovery, valid LG brightness/volume reads, and a live disconnect followed by recovery. That check exposed a missing UUID during disconnection; the app now stores the hardware identity and has regression coverage for identity matching. Full hardware mutation and resolution testing remains incomplete. Hosted CI checks compilation and logic, not monitor behavior.
 
 Four personalization model scenarios and three store scenarios cover names, mode geometry and refresh variants, persistence, malformed preferences, storage limits, and stale favorite rejection. Live UI checks confirmed name and favorite persistence across relaunch, followed by removal of the temporary test settings.
+
+Advanced checks cover probe validation, noncontinuous input values, exact refresh geometry, contrast rollback, input delivery, recovery guards, linked edits, persistence and preset isolation. The LG monitor returned valid contrast but no identified standard input; input switching remains unavailable on that tested connection. Hardware write tests remain separate from the automated suite.
 
 ## License and attribution
 

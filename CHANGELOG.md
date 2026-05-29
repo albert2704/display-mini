@@ -4,6 +4,10 @@
 
 ### Added
 
+* Advanced tab with optional linked brightness, verified monitor contrast, standard input switching with confirmation, and a refresh rate picker that preserves resolution.
+* Independent advanced capability detection, unknown input handling, stale operation guards, and model/store/process regression coverage.
+* Light and dark Advanced screenshots and detailed control documentation.
+
 * Custom screen names with system-name restore and local persistence.
 * Favorite resolutions per display, including refresh and density variants, with unavailable-mode retention and the existing Keep/Revert preview.
 * Display Settings popover, validated preference storage, backup/reset, and seven personalization regression scenarios.
