@@ -10,7 +10,7 @@
 | Built-in recovery after unplug | Shipped; user confirmed live recovery | Existing recovery implementation and tests |
 | Everyday controls | In progress | [0003](../specs/0003-everyday-controls.md) |
 | Custom screen names and favorite resolutions | Shipped in PR #5 | [0004](../specs/0004-display-personalization.md) |
-| Advanced tab and controls | Built; awaiting PR and CI | [0005](../specs/0005-advanced-controls.md) |
+| Advanced tab and controls | Built; PR #6 awaiting merge | [0005](../specs/0005-advanced-controls.md) |
 
 ## Everyday controls
 
@@ -47,7 +47,8 @@ The user requested DisplayBuddy-style functionality in a separate Advanced tab. 
 - [x] Build the tab, monitor probe and guarded actions.
 - [x] Add model, store and subprocess regression coverage.
 - [x] Complete native verification, screenshots and documentation. [Results and limits](../reviews/2026-10-10-advanced-controls.md).
-- [ ] Publish the feature PR and pass CI.
+- [x] Publish [PR #6](https://github.com/albert2704/display-mini/pull/6). Its required macOS check tracks the latest CI result.
+- [ ] Merge PR #6.
 
 ## Deferred
 
