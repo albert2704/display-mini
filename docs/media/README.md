@@ -15,6 +15,8 @@ The renderer reuses the hardware substitutes from the store tests, disables moni
 | `shortcut-recorded.png` | Captured Control+Shift+K, before Save. |
 | `display-settings.png` | Custom display name and favorite resolutions in light appearance. |
 | `display-settings-dark.png` | The same example in dark appearance. |
+| `advanced.png` | Linked brightness, refresh rates, contrast and input in light appearance. |
+| `advanced-dark.png` | The Advanced tab in dark appearance. |
 | `walkthrough.gif` | Small inline preview for GitHub Markdown. |
 | `walkthrough.mp4` | 24 second, 1280×720 H.264 walkthrough. |
 

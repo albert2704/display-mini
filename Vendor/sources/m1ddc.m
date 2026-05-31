@@ -32,6 +32,7 @@ static void printUsage() {
     "\n"
     " --delay-ms 50|150       - Optional first argument; chooses the bounded DDC response wait.\n"
     " display <uuid> probe    - Reports verified route and independent control results. Sends no Set VCP commands.\n"
+    " display <uuid> probe-advanced - Reads contrast and input diagnostics without changing settings.\n"
     "\n"
     " set luminance n         - Sets luminance (brightness) to n, where n is a number between 0 and the maximum value (usually 100).\n"
     "     contrast n          - Sets contrast to n, where n is a number between 0 and the maximum value (usually 100).\n"
@@ -151,19 +152,27 @@ static NSDictionary *probeControl(DDCTransport *transport, UInt8 feature) {
         if (value.curValue >= 0 || [status isEqualToString:@"unsupported"]) { break; }
         if (i < 2) { usleep(20000); }
     }
-    if (value.curValue >= 0 && (value.maxValue <= 0 || value.curValue > value.maxValue)) { status = @"invalidRange"; }
+    // Input is noncontinuous: its maximum is often zero, not a numeric range.
+    if (feature != INPUT && value.curValue >= 0 && (value.maxValue <= 0 || value.curValue > value.maxValue)) { status = @"invalidRange"; }
+    if (feature == INPUT && value.curValue == 0) { status = @"invalidRange"; }
     NSMutableDictionary *result = [@{@"status": status, @"attempts": @(attempts)} mutableCopy];
     if (value.curValue >= 0) { result[@"current"] = @(value.curValue); result[@"maximum"] = @(value.maxValue); }
     if (ioError != 0) { result[@"errorCode"] = @((UInt32)ioError); }
     return result;
 }
 
-static int printProbe(DisplayInfos *display, DDCTransport *transport) {
+static int printProbe(DisplayInfos *display, DDCTransport *transport, BOOL advanced) {
     NSString *route = transport->ambiguous ? @"ambiguous" : transport->service == NULL ? @"none" :
         transport->chipAddress == DDC_CHIP_ADDRESS_MCDP29XX ? @"mcdp" : @"standard";
-    NSDictionary *result = @{@"schema": @1, @"uuid": display->uuid ?: @"",
-        @"transport": route, @"serviceCount": @(transport->serviceCount), @"delayMS": @(getDDCReadDelayMS()),
-        @"brightness": probeControl(transport, LUMINANCE), @"volume": probeControl(transport, VOLUME)};
+    NSMutableDictionary *result = [@{@"schema": @1, @"uuid": display->uuid ?: @"",
+        @"transport": route, @"serviceCount": @(transport->serviceCount), @"delayMS": @(getDDCReadDelayMS())} mutableCopy];
+    if (advanced) {
+        result[@"contrast"] = probeControl(transport, CONTRAST);
+        result[@"input"] = probeControl(transport, INPUT);
+    } else {
+        result[@"brightness"] = probeControl(transport, LUMINANCE);
+        result[@"volume"] = probeControl(transport, VOLUME);
+    }
     NSData *json = [NSJSONSerialization dataWithJSONObject:result options:0 error:nil];
     if (!json) { return EXIT_FAILURE; }
     writeToStdOut([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]);
@@ -308,8 +317,8 @@ int main(int argc, char** argv) {
         transport = getDisplayDDCTransport(selectedDisplay);
     }
 
-    if (argc == 1 && STR_EQ(argv[0], "probe") && selectedDisplay != NULL && selectedDisplay->uuid != NULL) {
-        return printProbe(selectedDisplay, &transport);
+    if (argc == 1 && (STR_EQ(argv[0], "probe") || STR_EQ(argv[0], "probe-advanced")) && selectedDisplay != NULL && selectedDisplay->uuid != NULL) {
+        return printProbe(selectedDisplay, &transport, STR_EQ(argv[0], "probe-advanced"));
     }
 
     if (transport.service == NULL) {
