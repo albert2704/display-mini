@@ -1,5 +1,7 @@
 # Security and privacy
 
+Connection reports use an explicit field allowlist and omit monitor UUIDs, serials, names, registry paths, local paths and raw helper output. Reports are copied only when requested and are never uploaded. The DDC process runner caps output at 64 KiB and bounds both execution and pipe cleanup.
+
 ## Reporting a vulnerability
 
 Use [GitHub's private vulnerability report](https://github.com/albert2704/display-mini/security/advisories/new) for security issues. Include the affected version, reproduction, impact, and a minimal example. Do not publish credentials, personal hardware identifiers, or an exploit affecting other people in a public issue.

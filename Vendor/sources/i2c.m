@@ -3,6 +3,19 @@
 #include "i2c.h"
 #include "utils.h"
 
+static UInt32 readDelayMS = 50;
+void setDDCReadDelayMS(UInt32 milliseconds) { readDelayMS = milliseconds == 150 ? 150 : 50; }
+UInt32 getDDCReadDelayMS(void) { return readDelayMS; }
+
+DDCReplyStatus validateDDCReply(const UInt8 *data, UInt8 feature) {
+    UInt8 checksum = 0x50;
+    for (int i = 0; i < 11; i++) { checksum ^= data[i]; }
+    if (checksum != 0 || data[0] != 0x6e || (data[1] & 0x7f) != 8 ||
+        data[2] != 0x02 || data[4] != feature) { return DDCReplyInvalid; }
+    if (data[3] == 1) { return DDCReplyUnsupported; }
+    return data[3] == 0 ? DDCReplyValid : DDCReplyInvalid;
+}
+
 static int getBytesUsed(UInt8* data) {
     // Length byte excludes itself and the checksum. Trailing zero bytes are valid.
     return (data[0] & 0x7f) + 2;
@@ -36,7 +49,7 @@ void prepareDDCWrite(DDCPacket *packet, UInt16 newValue) {
 
 IOReturn performDDCReadAtChipAddress(IOAVServiceRef avService, UInt32 chipAddress, DDCPacket *packet) {
     memset(packet->data, 0, sizeof(UInt8) * DDC_BUFFER_SIZE);
-    usleep(DDC_MCDP_READ_WAIT);
+    usleep(readDelayMS * 1000);
     return IOAVServiceReadI2C(avService, chipAddress, 0, packet->data, 11);
 }
 

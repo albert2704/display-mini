@@ -19,6 +19,8 @@ Display Mini runs independently. It is not affiliated with BetterDisplay and doe
 | Resolution | Lists modes reported by macOS, including available HiDPI and refresh variants. A preview reverts after 15 seconds unless kept. |
 | Connection switch | Disconnects a display from the desktop and reconnects it. The last active display is protected. |
 | Recovery | Reconnects displays disconnected by this app, removes dimming, and retries pending resolution recovery. |
+| Compatibility profiles | Standard or Slow monitor response timing, remembered per display. |
+| Connection diagnostics | Separate brightness and volume results, detected ranges, attempts, verified route, and a copyable report without device identifiers. |
 
 There are no accounts, subscriptions, analytics, updater, virtual displays, or network services in the app.
 
@@ -65,13 +67,16 @@ Keep another visible display available when first testing connection controls. R
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Missing controls, cables, reconnect problems, display changes, and build errors. |
 | [Architecture](docs/ARCHITECTURE.md) | Source map, API boundaries, data flow, persistence, and recovery design. |
 | [Development and releases](docs/DEVELOPMENT.md) | Toolchain, tests, hardware checks, CI, versioning, and packaging. |
+| [Feature research](docs/FEATURE_RESEARCH.md) | BetterDisplay and DisplayBuddy inspiration, implemented scope, and later candidates. |
 | [Contributing](CONTRIBUTING.md) | Local workflow, review expectations, and useful compatibility reports. |
 | [Security and privacy](SECURITY.md) | Local data, private reporting, and release limitations. |
 | [Changelog](CHANGELOG.md) | Version history and preview status. |
 
 ## Validation and limits
 
-Six automated logic cases currently cover 32 assertions. They test value parsing and scaling, mode selection, last display protection, and identity resolution when a disconnected monitor loses its UUID. These tests do not operate physical monitors.
+Ten automated logic cases cover 77 assertions, including probe validation, report privacy, brightness math, mode selection, and display identity. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
+
+DDC discovery inspects up to 64 online displays and matches the control service's EDID against the selected screen. Connections without readable EDID and monitors reporting identical identities may remain unavailable. Slow timing can help delayed replies; it cannot make an incompatible dock forward DDC.
 
 Local checks included app launch, accessibility and visual inspection, native display discovery, valid LG brightness/volume reads, and a live disconnect followed by recovery. That check exposed a missing UUID during disconnection; the app now stores the hardware identity and has regression coverage for identity matching. Full hardware mutation and resolution testing remains incomplete. Hosted CI checks compilation and logic, not monitor behavior.
 

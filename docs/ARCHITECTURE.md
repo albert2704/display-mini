@@ -27,8 +27,9 @@ No server, network request, account, or external runtime is involved. The app is
 | `Sources/DisplayMini/PanelView.swift` | Display cards, control bindings, DDC settings, resolution confirmation, footer. |
 | `Sources/DisplayMini/CompactSlider.swift` | Native NSSlider tracking, custom drawing, keyboard accessibility, release callbacks. |
 | `Sources/DisplayMini/DisplayStore.swift` | Observable device state, discovery, debounce, operation revisions, recovery, and persistence. |
-| `Sources/DisplayMini/Hardware.swift` | CoreGraphics/private API adapters, monitor subprocesses, and overlay windows. |
-| `Sources/DisplayCore/ControlMath.swift` | Pure brightness math, parser, mode choice, and hardware identity matching. |
+| `Sources/DisplayMini/Hardware.swift` | CoreGraphics/private API adapters and overlay windows. |
+| `Sources/DisplayMini/DDCClient.swift` | Serial monitor operations, bounded subprocess output collection, structured probe and write verification. |
+| `Sources/DisplayCore/ControlMath.swift` | Brightness math, typed DDC probe validation, diagnostic field allowlist, mode choice, and hardware identity matching. |
 | `Tests/DisplayCoreTests/ControlTests.swift` | A small standalone assertion runner, not XCTest. |
 | `Vendor/` | Pinned m1ddc source, MIT license, and locally documented transport fixes. |
 
@@ -39,6 +40,8 @@ SkyLight's `SLSGetDisplayList` or `CGSGetDisplayList` can include disconnected s
 A stable UUID identifies a device in the app. When macOS omits that UUID after disconnection, the saved hardware identity is matched against the fresh private list. Fallback candidates must lack a current UUID, preventing a different identified monitor from receiving an old screen's recovery operation. Multiple matching identities are rejected.
 
 Display IDs are transient. Do not hardcode them, assume list order is stable, or use the first monitor as a substitute for the requested screen.
+
+The DDC helper enumerates up to 64 online CoreGraphics IDs. Metadata is optional and initialized before use. It dynamically resolves `IOAVServiceCopyEDID`, validates each external service's EDID header and base block checksum, and matches vendor/model/serial to the requested screen. Uniqueness is checked against all online IDs, including screens without registry metadata. Multiple matching services or duplicate identities are rejected. The framebuffer and DCP proxy need not share a subtree. MCDP29xx keeps its existing 0xB7 address; other matched services use 0x37.
 
 ## Brightness and volume
 
@@ -55,6 +58,10 @@ Software dimming is a black borderless NSWindow on each screen. It ignores mouse
 DDC processes run on a serial background queue. The helper is addressed by display UUID and receives arguments as an array, never a shell command. Each process has a three second timeout followed by bounded termination. The helper performs three bounded read attempts. A valid response must pass envelope, control, status, and checksum checks. The app requires a positive maximum and scales writes to that range. A successful write is read back before confirmation.
 
 Slider work is debounced by 120 ms. Separate brightness and volume revisions prevent one slider from invalidating the other. Lifecycle/recovery invalidation prevents stale completions from reapplying dimming. UI state changes return to the main actor.
+
+Detection uses one schema-versioned JSON `probe` process for both controls, taking current and maximum from the same reply. The app validates the returned UUID, timing, route consistency, attempts and numeric range before accepting it. Unsupported VCP responses are distinguished from invalid replies, I/O failures and unavailable routes. Standard waits 50 ms before reading; Slow waits 150 ms. The selected profile also applies to write confirmation.
+
+Subprocess output is read through a nonblocking pipe and limited to 64 KiB. A deadline covers process execution and EOF collection, including a child retaining an inherited descriptor. There is no detached blocking reader. Diagnostic reports are assembled from explicitly allowed fields, never raw helper output or identity metadata.
 
 ## Resolution transactions
 
@@ -77,6 +84,7 @@ Domain: `dev.albert.DisplayMini` in local UserDefaults.
 | `displayIdentities` | JSON map of UUID to display ID, vendor, model, serial. | Match disconnected devices when macOS omits UUID. |
 | `ownedDisconnects` | Array of display UUIDs. | Retry reconnection on recovery or next launch. |
 | `forceSoftware.<UUID>` | Boolean. | Per-display brightness preference. |
+| `ddcTiming.<UUID>` | `standard` or `slow`. | Per-display response timing; unknown values use Standard. |
 | `software.<UUID>` | Fraction. | Per-display dimming state. |
 | `resolutionRecovery` | UUID and previous mode ID, logical size, pixel width, refresh. | Recover an unconfirmed mode after failure or restart. |
 
