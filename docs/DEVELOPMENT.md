@@ -55,6 +55,8 @@ The fixtures use synthetic serial numbers. The tests do not call macOS configura
 
 ## Manual hardware validation
 
+For an explicitly authorized read-only hardware check, the bundled helper accepts `--delay-ms 50 display <UUID> probe` (or 150 for Slow). It returns schema 1 JSON. This internal output includes the requested UUID; use the app's **Copy Report** for public issue reports. Detection sends Get VCP requests and never Set VCP commands.
+
 Perform these checks only on a setup where display changes are authorized and another visible screen/recovery route is available. Record the app commit, OS, chip family, monitor model, connection path, result, and any error. Omit hardware serials and UUIDs from public reports.
 
 | Check | Expected result |
