@@ -5,10 +5,13 @@
 
 #include "ioregistry.h"
 #include "utils.h"
+#include <dlfcn.h>
 
 static CFTypeRef getCFStringRef(io_service_t service, char* key) {
     CFStringRef cfstring = CFStringCreateWithCString(kCFAllocatorDefault, key, kCFStringEncodingASCII);
-    return IORegistryEntrySearchCFProperty(service, kIOServicePlane, cfstring, kCFAllocatorDefault, kIORegistryIterateRecursively);
+    CFTypeRef value = IORegistryEntrySearchCFProperty(service, kIOServicePlane, cfstring, kCFAllocatorDefault, kIORegistryIterateRecursively);
+    CFRelease(cfstring);
+    return value;
 }
 
 static Boolean isMCDP29XXProxy(io_service_t proxy) {
@@ -37,14 +40,18 @@ static Boolean isMCDP29XXProxy(io_service_t proxy) {
 
 CGDisplayCount getOnlineDisplayInfos(DisplayInfos* displayInfos) {
     // Getting online display list and count
-    CGDisplayCount screenCount;
+    CGDisplayCount screenCount = 0;
     CGDirectDisplayID screenList[MAX_DISPLAYS];
-    CGGetOnlineDisplayList(MAX_DISPLAYS, screenList, &screenCount);
+    if (CGGetOnlineDisplayList(MAX_DISPLAYS, screenList, &screenCount) != kCGErrorSuccess) {
+        return 0;
+    }
 
     int validDisplayCount = 0;
     // Fetching each display infos from IOKit
-    for (int i = 0; i < (int)screenCount && validDisplayCount < MAX_DISPLAYS; i++) {
+    for (int i = 0; i < (int)MIN(screenCount, MAX_DISPLAYS) && validDisplayCount < MAX_DISPLAYS; i++) {
         DisplayInfos *currDisplay = displayInfos + validDisplayCount;
+        *currDisplay = (DisplayInfos){0};
+        currDisplay->productName = @"Unknown Display";
         currDisplay->id = screenList[i];
 
         // This is a private API, but it's a shortcut to get the system UUID
@@ -143,9 +150,10 @@ DisplayInfos* selectDisplay(DisplayInfos *displays, int connectedDisplays, char 
 
     // Checking if display identifier is a display index from the "list" command
     char *stop;
+    errno = 0;
     long displayNumber = strtol(displayIdentifier, &stop, 10);
     if (*stop == '\0') {
-        return displayNumber <= connectedDisplays ? displays + (displayNumber - 1) : NULL;
+        return errno == 0 && displayNumber >= 1 && displayNumber <= connectedDisplays ? displays + (displayNumber - 1) : NULL;
     }
 
     // Checking if an identification method is specified, otherwise defaulting to UUID
@@ -161,26 +169,33 @@ DisplayInfos* selectDisplay(DisplayInfos *displays, int connectedDisplays, char 
     }
 
     // Searching for display that matchs the identifier for the given identification method
+    DisplayInfos *match = NULL;
     for (int i = 0; i < connectedDisplays; i++) {
         const char *displayValue = getDisplayIdentifier(displays + i, identificationMethod).UTF8String;
         if (displayValue != NULL && STR_EQ(displayIdentifier, displayValue)) {
-            return displays + i;
+            if (match != NULL) { return NULL; }
+            match = displays + i;
         }
     }
-    return NULL;
-}
-
-static kern_return_t getIORegistryRootIterator(io_iterator_t* iter) {
-    io_registry_entry_t root = IORegistryGetRootEntry(kIOMainPortDefault);
-    kern_return_t ret = IORegistryEntryCreateIterator(root, kIOServicePlane, kIORegistryIterateRecursively, iter);
-    if (ret != KERN_SUCCESS) {
-        IOObjectRelease(*iter);
-    }
-    return ret;
+    return match;
 }
 
 IOAVServiceRef getDefaultDisplayAVService() {
     return IOAVServiceCreate(kCFAllocatorDefault);
+}
+
+Boolean displayIdentityMatchesEDID(const DisplayInfos *display, CFDataRef edid) {
+    if (!display || display->vendor == 0 || display->model == 0 || !edid ||
+        CFGetTypeID(edid) != CFDataGetTypeID() || CFDataGetLength(edid) < 128) { return false; }
+    const UInt8 *b = CFDataGetBytePtr(edid);
+    const UInt8 header[] = {0, 255, 255, 255, 255, 255, 255, 0};
+    UInt8 checksum = 0;
+    for (int i = 0; i < 128; i++) { checksum += b[i]; }
+    if (memcmp(b, header, 8) != 0 || checksum != 0) { return false; }
+    UInt32 vendor = ((UInt32)b[8] << 8) | b[9];
+    UInt32 model = b[10] | ((UInt32)b[11] << 8);
+    UInt32 serial = b[12] | ((UInt32)b[13] << 8) | ((UInt32)b[14] << 16) | ((UInt32)b[15] << 24);
+    return vendor == display->vendor && model == display->model && serial == display->serial;
 }
 
 DDCTransport getDisplayDDCTransport(DisplayInfos* displayInfos) {
@@ -193,35 +208,31 @@ DDCTransport getDisplayDDCTransport(DisplayInfos* displayInfos) {
         return transport;
     }
 
-    uint64_t selectedAdapterID;
-    if (IORegistryEntryGetRegistryEntryID(displayInfos->adapter, &selectedAdapterID) != KERN_SUCCESS) {
+    // Framebuffers and DCP services can be in separate branches. Verify identity
+    // against EDID read from the service itself, never registry traversal order.
+    typedef IOReturn (*CopyEDID)(IOAVServiceRef, CFDataRef *);
+    CopyEDID copyEDID = (CopyEDID)dlsym(RTLD_DEFAULT, "IOAVServiceCopyEDID");
+    if (!copyEDID) { return transport; }
+    DisplayInfos online[MAX_DISPLAYS] = {0};
+    CGDisplayCount count = getOnlineDisplayInfos(online);
+    unsigned int identities = 0;
+    for (CGDisplayCount i = 0; i < count; i++) {
+        if (online[i].vendor == displayInfos->vendor && online[i].model == displayInfos->model &&
+            online[i].serial == displayInfos->serial) { identities++; }
+    }
+    if (identities != 1) { transport.ambiguous = identities > 1; return transport; }
+    io_iterator_t iter = MACH_PORT_NULL;
+    if (IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("DCPAVServiceProxy"), &iter) != KERN_SUCCESS) {
         return transport;
     }
 
-    // Creating IORegistry iterator
-    io_iterator_t iter;
-    if (getIORegistryRootIterator(&iter) != KERN_SUCCESS) {
-        return transport;
-    }
-
-    Boolean framebufferMatchesDisplay = false;
     io_service_t service;
 
 	// Iterating through IORegistry
     while ((service = IOIteratorNext(iter)) != MACH_PORT_NULL) {
-        if (IOObjectConformsTo(service, "IOMobileFramebuffer")) {
-            uint64_t framebufferID;
-            framebufferMatchesDisplay =
-                IORegistryEntryGetRegistryEntryID(service, &framebufferID) == KERN_SUCCESS &&
-                framebufferID == selectedAdapterID;
-            IOObjectRelease(service);
-            continue;
-        }
-
         // Searching for DCPAVServiceProxy associated with the selected display
         io_name_t name;
-        IORegistryEntryGetName(service, name);
-        if (!framebufferMatchesDisplay || !STR_EQ(name, "DCPAVServiceProxy")) {
+        if (IORegistryEntryGetName(service, name) != KERN_SUCCESS || !STR_EQ(name, "DCPAVServiceProxy")) {
             IOObjectRelease(service);
             continue;
         }
@@ -247,14 +258,26 @@ DDCTransport getDisplayDDCTransport(DisplayInfos* displayInfos) {
             continue;
         }
 
+        CFDataRef edid = NULL;
+        IOReturn readResult = copyEDID(avService, &edid);
+        Boolean identityMatches = readResult == kIOReturnSuccess && displayIdentityMatchesEDID(displayInfos, edid);
+        if (edid != NULL) { CFRelease(edid); }
+        if (!identityMatches) { CFRelease(avService); IOObjectRelease(service); continue; }
+
+        transport.serviceCount++;
+        if (transport.serviceCount > 1) {
+            transport.ambiguous = true;
+            CFRelease(avService);
+            if (transport.service != NULL) { CFRelease(transport.service); transport.service = NULL; }
+            IOObjectRelease(service);
+            continue;
+        }
         transport.service = avService;
         // MCDP29xx routes DDC through chip address 0xB7.
         transport.chipAddress = isMCDP29XXProxy(service)
             ? DDC_CHIP_ADDRESS_MCDP29XX
             : DDC_CHIP_ADDRESS_DEFAULT;
         IOObjectRelease(service);
-        IOObjectRelease(iter);
-        return transport;
     }
 
     IOObjectRelease(iter);

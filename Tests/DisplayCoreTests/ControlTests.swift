@@ -20,7 +20,78 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         suite.testLastDisplayCannotBeDisconnected()
         suite.testResolutionSliderPreservesCurrentDensityAndRefresh()
         suite.testDisconnectedDisplayIdentitySurvivesLossOfUUIDAndChangeOfID()
-        print("Passed 6 control tests (\(checks) assertions).")
+        suite.testStructuredProbeRejectsWrongIdentityAndUnsafeRanges()
+        suite.testProbeDistinguishesUnsupportedFromCommunicationFailure()
+        suite.testTimingAndDiagnosticReportPrivacy()
+        suite.testUnverifiedAndAmbiguousRoutesNeverEnableControls()
+        print("Passed 10 control tests (\(checks) assertions).")
+    }
+    private var fixtureUUID: String { "00000000-0000-4000-8000-000000000001" }
+    private var probeFixture: [String: Any] {
+        ["schema": 1, "uuid": fixtureUUID, "transport": "mcdp", "serviceCount": 1, "delayMS": 50,
+         "brightness": ["status": "ok", "attempts": 1, "current": 128, "maximum": 255],
+         "volume": ["status": "unsupported", "attempts": 1]]
+    }
+    private func parse(_ fixture: [String: Any], uuid: String? = nil, timing: DDCTiming = .standard) -> DDCProbe? {
+        DDCProbe.parse(try! JSONSerialization.data(withJSONObject: fixture), expectedUUID: uuid ?? fixtureUUID, timing: timing)
+    }
+    func testStructuredProbeRejectsWrongIdentityAndUnsafeRanges() {
+        XCTAssertEqual(parse(probeFixture)?.brightness.fraction ?? 0, 128.0 / 255, accuracy: 0.0001)
+        XCTAssertNil(parse(probeFixture, uuid: "00000000-0000-4000-8000-000000000002"))
+        XCTAssertNil(parse(probeFixture, uuid: "not-a-display-uuid"))
+        for (current, maximum) in [(1, 0), (101, 100), (-1, 100), (0, 65536)] {
+            var fixture = probeFixture
+            fixture["brightness"] = ["status": "ok", "attempts": 1, "current": current, "maximum": maximum]
+            XCTAssertNil(parse(fixture))
+        }
+        for (key, value) in [("schema", 2), ("serviceCount", 2), ("delayMS", 150)] {
+            var fixture = probeFixture; fixture[key] = value
+            XCTAssertNil(parse(fixture))
+        }
+        XCTAssertNil(DDCProbe.parse(Data("truncated {".utf8), expectedUUID: fixtureUUID, timing: .standard))
+    }
+    func testProbeDistinguishesUnsupportedFromCommunicationFailure() {
+        for status in ["unsupported", "invalidReply", "invalidRange", "writeError", "readError"] {
+            var fixture = probeFixture
+            fixture["volume"] = ["status": status, "attempts": 3]
+            let probe = parse(fixture)
+            XCTAssertEqual(probe?.volume.status.rawValue, status)
+            XCTAssertNil(probe?.volume.fraction)
+            XCTAssertTrue(probe?.brightness.fraction != nil)
+        }
+        for attempts in [-1, 0, 4] {
+            var fixture = probeFixture; fixture["volume"] = ["status": "ok", "attempts": attempts, "current": 50, "maximum": 100]
+            XCTAssertNil(parse(fixture))
+        }
+        var fixture = probeFixture; fixture["volume"] = ["status": "invented", "attempts": 1]
+        XCTAssertNil(parse(fixture))
+    }
+    func testTimingAndDiagnosticReportPrivacy() {
+        XCTAssertEqual(DDCTiming(saved: nil), .standard)
+        XCTAssertEqual(DDCTiming(saved: "unknown"), .standard)
+        XCTAssertEqual(DDCTiming(saved: "slow").delayMS, 150)
+        var fixture = probeFixture; fixture["delayMS"] = 150
+        fixture["serial"] = "SYNTHETIC-PRIVATE-SERIAL"
+        fixture["path"] = "/synthetic/private/path"
+        fixture["name"] = "Private display name"
+        let report = parse(fixture, timing: .slow)!.diagnosticLines.joined(separator: "\n")
+        for secret in [fixtureUUID, "SYNTHETIC-PRIVATE-SERIAL", "/synthetic/private/path", "Private display name"] {
+            XCTAssertFalse(report.contains(secret))
+        }
+        XCTAssertTrue(report.contains("150 ms"))
+        XCTAssertTrue(report.contains("128/255"))
+    }
+    func testUnverifiedAndAmbiguousRoutesNeverEnableControls() {
+        for route in ["none", "ambiguous"] {
+            var fixture = probeFixture
+            fixture["transport"] = route; fixture["serviceCount"] = 0
+            fixture["brightness"] = ["status": "notAvailable", "attempts": 0]
+            fixture["volume"] = ["status": "notAvailable", "attempts": 0]
+            XCTAssertTrue(parse(fixture) != nil)
+            XCTAssertNil(parse(fixture)?.brightness.fraction)
+            fixture["brightness"] = ["status": "ok", "attempts": 1, "current": 50, "maximum": 100]
+            XCTAssertNil(parse(fixture))
+        }
     }
     func testDDCRejectsFailuresRatherThanPresentingThemAsZero() {
         for value in ["-1", "DDC communication failure: timeout", "", "50\n100", "65536", "nan"] {
