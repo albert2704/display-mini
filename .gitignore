@@ -1,0 +1,8 @@
+.build/
+dist/
+Vendor/.objects/
+Vendor/m1ddc
+.DS_Store
+.swiftpm/
+*.xcuserstate
+*.xcuserdatad/

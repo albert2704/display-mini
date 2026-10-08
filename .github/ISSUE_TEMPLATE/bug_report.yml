@@ -1,0 +1,34 @@
+name: Bug or monitor compatibility report
+description: Report a reproducible problem or unsupported monitor connection.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Please redact serial numbers, display UUIDs, usernames, and unrelated desktop content. Report security issues privately through the Security tab."
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version and Mac chip
+      placeholder: macOS 27, M1 Pro
+    validations:
+      required: true
+  - type: input
+    id: monitor
+    attributes:
+      label: Monitor and connection path
+      description: Include the monitor model, cable, dock, and adapter models. Omit serials.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: What happened and how to reproduce it
+      description: Include expected behavior, actual behavior, error text, and which controls work. Mention other display apps running.
+    validations:
+      required: true
