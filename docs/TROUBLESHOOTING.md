@@ -1,5 +1,22 @@
 # Troubleshooting
 
+## Read the connection report first
+
+Open **Monitor Controls…**, run **Detect Again**, and check brightness and volume separately. If replies are intermittent, select **Slow** and compare the result. A slow profile changes only communication waits; it does not change the monitor's brightness or volume.
+
+| Result | Meaning and next step |
+| --- | --- |
+| Responding | A valid current value and maximum were received. The raw range need not be 0–100. |
+| Not supported by monitor | The monitor explicitly rejected that VCP control. Software dimming can still control brightness. |
+| No valid reply | Check DDC/CI, try a Custom picture mode, Slow timing, and a direct cable connection. |
+| Request/reply I/O failure | macOS could not complete the DDC transfer. Try another port or cable; check the dock's support. |
+| Invalid control range | Hardware control stays disabled because safe scaling is unknown. Retry; do not assume a maximum of 100. |
+| No verified DDC route | No external service had a readable, valid EDID matching this screen. Private API availability, virtual connections or adapters may be involved. |
+| DDC route is ambiguous | More than one display has the same identity, or multiple services match. The app refuses to guess which screen to change. |
+| Check timed out | The helper exceeded its deadline. Reconnect the cable and retry. |
+
+Use **Copy Report** for a report with device identifiers omitted. Add the monitor model, cable/dock model, and steps yourself when opening an issue. The app cannot infer a cable or dock model from a failed DDC reply. A report is copied locally and is never sent automatically.
+
 ## Brightness says Software
 
 Native or DDC brightness was unavailable, or software mode was selected. Open Monitor Controls, check the software setting, and choose Detect Again. Enable DDC/CI in the monitor's menu. If a dock or adapter is involved, test a direct connection when practical.
