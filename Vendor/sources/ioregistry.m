@@ -56,26 +56,22 @@ CGDisplayCount getOnlineDisplayInfos(DisplayInfos* displayInfos) {
 
         // This is a private API, but it's a shortcut to get the system UUID
         CFDictionaryRef displayInfoDict = CoreDisplay_DisplayCreateInfoDictionary(currDisplay->id);
-        if (displayInfoDict == NULL) {
-            // Skip virtual displays that don't provide info dictionary
-            continue;
-        }
-
         currDisplay->serial = CGDisplaySerialNumber(currDisplay->id);
         currDisplay->model = CGDisplayModelNumber(currDisplay->id);
         currDisplay->vendor = CGDisplayVendorNumber(currDisplay->id);
 
-        currDisplay->uuid = CFDictionaryGetValue(displayInfoDict, CFSTR("kCGDisplayUUID"));
-        currDisplay->ioLocation = CFDictionaryGetValue(displayInfoDict, CFSTR("IODisplayLocation"));
-
-        // Skip virtual displays (like Sidecar/AirPlay) that don't have required properties
-        if (currDisplay->uuid == NULL || currDisplay->ioLocation == NULL) {
-            continue;
+        CFUUIDRef uuid = CGDisplayCreateUUIDFromDisplayID(currDisplay->id);
+        if (uuid) { currDisplay->uuid = (NSString *)CFUUIDCreateString(NULL, uuid); CFRelease(uuid); }
+        if (displayInfoDict) {
+            if (!currDisplay->uuid) { currDisplay->uuid = CFDictionaryGetValue(displayInfoDict, CFSTR("kCGDisplayUUID")); }
+            currDisplay->ioLocation = CFDictionaryGetValue(displayInfoDict, CFSTR("IODisplayLocation"));
         }
 
         // Retrieving IORegistry entry for display
-        currDisplay->adapter = IORegistryEntryCopyFromPath(kIOMainPortDefault, (CFStringRef)currDisplay->ioLocation);
+        if (currDisplay->ioLocation) { currDisplay->adapter = IORegistryEntryCopyFromPath(kIOMainPortDefault, (CFStringRef)currDisplay->ioLocation); }
         if (currDisplay->adapter == MACH_PORT_NULL) {
+            // Keep the CoreGraphics identity even when metadata is absent.
+            validDisplayCount++;
             continue;
         }
 
@@ -198,13 +194,22 @@ Boolean displayIdentityMatchesEDID(const DisplayInfos *display, CFDataRef edid) 
     return vendor == display->vendor && model == display->model && serial == display->serial;
 }
 
+Boolean displayIdentityIsUnique(const DisplayInfos *display, const DisplayInfos *online, CGDisplayCount count) {
+    unsigned int matches = 0;
+    for (CGDisplayCount i = 0; i < count; i++) {
+        if (online[i].vendor == display->vendor && online[i].model == display->model &&
+            online[i].serial == display->serial) { matches++; }
+    }
+    return matches == 1;
+}
+
 DDCTransport getDisplayDDCTransport(DisplayInfos* displayInfos) {
 
     DDCTransport transport = {
         .service = NULL,
         .chipAddress = DDC_CHIP_ADDRESS_DEFAULT,
     };
-    if (displayInfos == NULL || displayInfos->adapter == MACH_PORT_NULL) {
+    if (displayInfos == NULL) {
         return transport;
     }
 
@@ -214,13 +219,15 @@ DDCTransport getDisplayDDCTransport(DisplayInfos* displayInfos) {
     CopyEDID copyEDID = (CopyEDID)dlsym(RTLD_DEFAULT, "IOAVServiceCopyEDID");
     if (!copyEDID) { return transport; }
     DisplayInfos online[MAX_DISPLAYS] = {0};
-    CGDisplayCount count = getOnlineDisplayInfos(online);
-    unsigned int identities = 0;
+    CGDirectDisplayID ids[MAX_DISPLAYS] = {0};
+    CGDisplayCount count = 0;
+    if (CGGetOnlineDisplayList(MAX_DISPLAYS, ids, &count) != kCGErrorSuccess || count > MAX_DISPLAYS) { return transport; }
     for (CGDisplayCount i = 0; i < count; i++) {
-        if (online[i].vendor == displayInfos->vendor && online[i].model == displayInfos->model &&
-            online[i].serial == displayInfos->serial) { identities++; }
+        online[i].vendor = CGDisplayVendorNumber(ids[i]);
+        online[i].model = CGDisplayModelNumber(ids[i]);
+        online[i].serial = CGDisplaySerialNumber(ids[i]);
     }
-    if (identities != 1) { transport.ambiguous = identities > 1; return transport; }
+    if (!displayIdentityIsUnique(displayInfos, online, count)) { transport.ambiguous = true; return transport; }
     io_iterator_t iter = MACH_PORT_NULL;
     if (IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("DCPAVServiceProxy"), &iter) != KERN_SUCCESS) {
         return transport;

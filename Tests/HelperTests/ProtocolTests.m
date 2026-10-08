@@ -41,6 +41,12 @@ int main(void) {
     edid[8] = 0x12; edid[9] = 0x34; edid[10] = 0x78; edid[11] = 0x56; edid[12] = 42;
     edidChecksum(edid);
     DisplayInfos display = {.vendor = 0x1234, .model = 0x5678, .serial = 42};
+    DisplayInfos identityList[2] = {display, display};
+    assert(displayIdentityIsUnique(&display, identityList, 1));
+    // A second display without adapter metadata still makes the identity ambiguous.
+    identityList[1].adapter = MACH_PORT_NULL;
+    assert(!displayIdentityIsUnique(&display, identityList, 2));
+    assert(!displayIdentityIsUnique(&display, identityList, 0));
     CFDataRef data = CFDataCreate(NULL, edid, 128);
     assert(displayIdentityMatchesEDID(&display, data));
     display.serial = 43; assert(!displayIdentityMatchesEDID(&display, data));

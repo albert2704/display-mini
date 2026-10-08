@@ -46,6 +46,7 @@ IOAVServiceRef  getDefaultDisplayAVService();
 IOAVServiceRef  getDisplayAVService(DisplayInfos* displayInfos);
 DDCTransport    getDisplayDDCTransport(DisplayInfos* displayInfos);
 Boolean         displayIdentityMatchesEDID(const DisplayInfos *display, CFDataRef edid);
+Boolean         displayIdentityIsUnique(const DisplayInfos *display, const DisplayInfos *online, CGDisplayCount count);
 
 // External functions
 extern IOAVServiceRef   IOAVServiceCreate(CFAllocatorRef allocator);
