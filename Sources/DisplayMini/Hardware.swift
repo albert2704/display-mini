@@ -38,6 +38,23 @@ final class NativeDisplays {
             .takeRetainedValue() as? Bool
     }
 
+    var activeExternalLinkCount: Int? {
+        for name in ["AppleDCPDPTXRemotePortUFP", "AppleATCDPAltModePort"] {
+            var iterator: io_iterator_t = 0
+            guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(name), &iterator) == KERN_SUCCESS else { continue }
+            defer { IOObjectRelease(iterator) }
+            var states: [Bool] = []
+            while case let service = IOIteratorNext(iterator), service != 0 {
+                defer { IOObjectRelease(service) }
+                let hints = IORegistryEntryCreateCFProperty(service, "DisplayHints" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any]
+                let events = IORegistryEntryCreateCFProperty(service, "EventLog" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [[String: Any]] ?? []
+                if let active = ExternalLinkState.active(hints: hints, events: events) { states.append(active) }
+            }
+            if !states.isEmpty { return states.filter { $0 }.count }
+        }
+        return nil
+    }
+
     func displayIDs() -> [CGDirectDisplayID] {
         var ids = [UInt32](repeating: 0, count: 64), count: UInt32 = 0
         if let list = symbol(skyLight, ["SLSGetDisplayList", "CGSGetDisplayList"], as: GetList.self),
