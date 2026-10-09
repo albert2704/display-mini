@@ -13,6 +13,7 @@
 ### Fixed
 
 * Built in displays disabled by Display Mini now recover automatically after the last active external screen is unplugged. Recovery retries during display enumeration changes and waits while the lid is closed or the Mac is asleep.
+* Hardware port checks detect cable loss even while WindowServer retains an active external screen. A scoped activity prevents App Nap from delaying recovery polling while allowing normal system sleep.
 * Discovery truncation after four online displays and unsafe missing metadata.
 * Ambiguous service and duplicate monitor identity selection.
 * Output pipe deadlocks, oversized helper output and reader lifetime after timeout.
