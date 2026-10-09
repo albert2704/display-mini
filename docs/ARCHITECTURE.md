@@ -75,6 +75,12 @@ SkyLight's `SLSConfigureDisplayEnabled` or `CGSConfigureDisplayEnabled` is resol
 
 A switch changes desktop membership, not the DDC physical power state. Recovery and shutdown reconnect only owned disconnections. Screen changes and wake schedule a debounced refresh.
 
+Before refreshing, the store checks fresh OS connection state for a built in panel in `ownedDisconnects`. If no online, active external screen remains and IOPMrootDomain reports an open lid (`AppleClamshellState == false`), it attempts to reconnect that panel. Sleep and in flight connection transactions suppress the attempt. A two second timer runs only while the store retains an owned built in disconnection, covering missed AppKit notifications and temporary missing IDs. Attempts are spaced at least two seconds apart; normal DDC reads are not polled by this timer. Ownership is removed only after the panel is online and active. Shutdown invalidates the timer and suppresses queued recovery work. Synthetic tests cover unplug transitions, another remaining monitor, successful activation, lid state, sleep, ownership and transaction guards.
+
+WindowServer can retain an active external screen after its cable has been removed. The store also reads hardware port events and display hints from `AppleDCPDPTXRemotePortUFP`, falling back to `AppleATCDPAltModePort`. The most recent recognized event takes priority over stale hints. Unknown port state stays unknown. Before disabling a built in panel, the app enables hardware based recovery only if the active physical link count covers the active external display count. A later physical count of zero can then trigger recovery despite stale CoreGraphics state. A scoped ProcessInfo activity prevents App Nap from delaying the recovery timer while allowing system idle sleep; it ends when recovery completes or the app shuts down.
+
+`recoveryTrace` retains at most 40 local decision and result entries, with timestamps, state flags and counts. `recoveryHeartbeat` records the last timer tick. Neither contains UUIDs, serials, screen names, registry paths or raw registry payloads, and neither is uploaded. These records help distinguish missed events, suspended polling and rejected reconnection calls.
+
 ## Stored data
 
 Domain: `dev.albert.DisplayMini` in local UserDefaults.
@@ -83,6 +89,7 @@ Domain: `dev.albert.DisplayMini` in local UserDefaults.
 | --- | --- | --- |
 | `displayIdentities` | JSON map of UUID to display ID, vendor, model, serial. | Match disconnected devices when macOS omits UUID. |
 | `ownedDisconnects` | Array of display UUIDs. | Retry reconnection on recovery or next launch. |
+| `recoveryTrace`, `recoveryHeartbeat` | Bounded state summaries and last timer timestamp. | Diagnose automatic recovery locally without device identifiers. |
 | `forceSoftware.<UUID>` | Boolean. | Per-display brightness preference. |
 | `ddcTiming.<UUID>` | `standard` or `slow`. | Per-display response timing; unknown values use Standard. |
 | `software.<UUID>` | Fraction. | Per-display dimming state. |

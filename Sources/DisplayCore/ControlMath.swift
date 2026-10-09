@@ -184,3 +184,57 @@ public struct DisplayIdentity: Codable, Equatable, Sendable {
         return matches.count == 1 ? matches[0].displayID : nil
     }
 }
+
+
+public struct DisplayConnectionState: Sendable {
+    public let uuid: String
+    public let builtIn: Bool
+    public let online: Bool
+    public let active: Bool
+
+    public init(uuid: String, builtIn: Bool, online: Bool, active: Bool) {
+        self.uuid = uuid; self.builtIn = builtIn
+        self.online = online; self.active = active
+    }
+}
+
+public enum BuiltInDisplayRecovery {
+    /// Only restore a panel disabled by this app, after its replacement disappears.
+    /// An unknown lid state is not permission to override clamshell behavior.
+    public static func candidates(_ displays: [DisplayConnectionState], owned: Set<String>,
+                                  lidClosed: Bool?, sleeping: Bool, connectionBusy: Bool,
+                                  physicalExternalLost: Bool = false) -> [String] {
+        guard !owned.isEmpty, lidClosed == false, !sleeping, !connectionBusy,
+              physicalExternalLost || !displays.contains(where: { !$0.builtIn && $0.online && $0.active }) else { return [] }
+        return displays.filter { $0.builtIn && owned.contains($0.uuid) && !($0.online && $0.active) }
+            .map(\.uuid)
+    }
+}
+
+public enum ExternalLinkState {
+    /// Hardware port events can change before WindowServer updates its display list.
+    public static func active(hints: [String: Any]?, events: [[String: Any]]) -> Bool? {
+        var active: Bool?
+        for event in events {
+            guard let payload = event["EventPayload"] as? [String: Any] else { continue }
+            if let action = payload["Action"] as? String {
+                switch action {
+                case "Plug", "DisplayRequest": active = true
+                case "Unplug", "DisplayRelease": active = false
+                default: break
+                }
+            }
+            if let state = payload["State"] as? String,
+               ["SinkActive", "Activate", "LinkRate", "LaneCount"].contains(state),
+               let value = payload["Value"] as? NSNumber {
+                active = value.intValue > 0
+            }
+        }
+        if let active { return active }
+        guard let hints else { return nil }
+        if let valid = hints["Valid"] as? Bool, !valid { return false }
+        guard let width = hints["MaxW"] as? NSNumber, let height = hints["MaxH"] as? NSNumber,
+              width.intValue > 0, height.intValue > 0 else { return nil }
+        return true
+    }
+}
