@@ -24,7 +24,51 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         suite.testProbeDistinguishesUnsupportedFromCommunicationFailure()
         suite.testTimingAndDiagnosticReportPrivacy()
         suite.testUnverifiedAndAmbiguousRoutesNeverEnableControls()
-        print("Passed 10 control tests (\(checks) assertions).")
+        suite.testUnplugRestoresOnlyTheOwnedBuiltInPanel()
+        suite.testUnplugRecoveryRespectsLidSleepAndTransactions()
+        print("Passed 12 control tests (\(checks) assertions).")
+    }
+
+    func testUnplugRestoresOnlyTheOwnedBuiltInPanel() {
+        let panel = DisplayConnectionState(uuid: "panel", builtIn: true, online: false, active: false)
+        let monitor = DisplayConnectionState(uuid: "monitor", builtIn: false, online: true, active: true)
+        let secondMonitor = DisplayConnectionState(uuid: "second", builtIn: false, online: true, active: true)
+        let owned: Set<String> = ["panel", "monitor"]
+        func candidates(_ states: [DisplayConnectionState], owned: Set<String> = owned) -> [String] {
+            BuiltInDisplayRecovery.candidates(states, owned: owned, lidClosed: false, sleeping: false, connectionBusy: false)
+        }
+        // The panel stays disabled while a replacement is available.
+        XCTAssertTrue(candidates([panel, monitor, secondMonitor]).isEmpty)
+        XCTAssertTrue(candidates([panel, secondMonitor]).isEmpty)
+        // Unplugging the last external monitor must restore the panel.
+        XCTAssertEqual(candidates([panel]), ["panel"])
+        let offlineMonitor = DisplayConnectionState(uuid: "monitor", builtIn: false, online: false, active: false)
+        XCTAssertEqual(candidates([panel, offlineMonitor]), ["panel"])
+        XCTAssertTrue(candidates([panel], owned: ["monitor"]).isEmpty)
+        XCTAssertTrue(candidates([panel], owned: []).isEmpty)
+        // A stale active flag on an offline monitor must not prevent recovery.
+        let removed = DisplayConnectionState(uuid: "monitor", builtIn: false, online: false, active: true)
+        XCTAssertEqual(candidates([panel, removed]), ["panel"])
+        // An enable request is not confirmation. Retry until both flags are true.
+        let enabling = DisplayConnectionState(uuid: "panel", builtIn: true, online: true, active: false)
+        XCTAssertEqual(candidates([enabling]), ["panel"])
+        let restored = DisplayConnectionState(uuid: "panel", builtIn: true, online: true, active: true)
+        XCTAssertTrue(candidates([restored]).isEmpty)
+        XCTAssertTrue(candidates([restored], owned: ["monitor"]).isEmpty)
+    }
+
+    func testUnplugRecoveryRespectsLidSleepAndTransactions() {
+        let panel = DisplayConnectionState(uuid: "panel", builtIn: true, online: false, active: false)
+        for lidClosed: Bool? in [true, nil] {
+            XCTAssertTrue(BuiltInDisplayRecovery.candidates([panel], owned: ["panel"], lidClosed: lidClosed,
+                                                          sleeping: false, connectionBusy: false).isEmpty)
+        }
+        XCTAssertTrue(BuiltInDisplayRecovery.candidates([panel], owned: ["panel"], lidClosed: false,
+                                                      sleeping: true, connectionBusy: false).isEmpty)
+        XCTAssertTrue(BuiltInDisplayRecovery.candidates([panel], owned: ["panel"], lidClosed: false,
+                                                      sleeping: false, connectionBusy: true).isEmpty)
+        XCTAssertEqual(BuiltInDisplayRecovery.candidates([panel], owned: ["panel"], lidClosed: false,
+                                                       sleeping: false, connectionBusy: false), ["panel"])
     }
     private var fixtureUUID: String { "00000000-0000-4000-8000-000000000001" }
     private var probeFixture: [String: Any] {

@@ -184,3 +184,28 @@ public struct DisplayIdentity: Codable, Equatable, Sendable {
         return matches.count == 1 ? matches[0].displayID : nil
     }
 }
+
+
+public struct DisplayConnectionState: Sendable {
+    public let uuid: String
+    public let builtIn: Bool
+    public let online: Bool
+    public let active: Bool
+
+    public init(uuid: String, builtIn: Bool, online: Bool, active: Bool) {
+        self.uuid = uuid; self.builtIn = builtIn
+        self.online = online; self.active = active
+    }
+}
+
+public enum BuiltInDisplayRecovery {
+    /// Only restore a panel disabled by this app, after its replacement disappears.
+    /// An unknown lid state is not permission to override clamshell behavior.
+    public static func candidates(_ displays: [DisplayConnectionState], owned: Set<String>,
+                                  lidClosed: Bool?, sleeping: Bool, connectionBusy: Bool) -> [String] {
+        guard !owned.isEmpty, lidClosed == false, !sleeping, !connectionBusy,
+              !displays.contains(where: { !$0.builtIn && $0.online && $0.active }) else { return [] }
+        return displays.filter { $0.builtIn && owned.contains($0.uuid) && !($0.online && $0.active) }
+            .map(\.uuid)
+    }
+}

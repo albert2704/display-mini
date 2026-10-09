@@ -74,6 +74,11 @@ struct DisplayMode: Identifiable {
     private var observers: [NSObjectProtocol] = []
     private var refreshWork: DispatchWorkItem?
     private var resolutionTimer: Timer?
+    private var recoveryTimer: Timer?
+    private var sleeping = false
+    private var shuttingDown = false
+    private var nextRecoveryAttempt = Date.distantPast
+    private var automaticRecoveryError: String?
     private var connectionRevision = 0
     private var pendingResolution: (uuid: String, original: CGDisplayMode, requested: CGDisplayMode)?
     private var ownedDisconnects: Set<String> {
@@ -94,7 +99,10 @@ struct DisplayMode: Identifiable {
             Task { @MainActor in self?.scheduleRefresh() }
         })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.scheduleRefresh() }
+            Task { @MainActor in self?.sleeping = false; self?.scheduleRefresh() }
+        })
+        observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.sleeping = true }
         })
     }
 
@@ -110,6 +118,7 @@ struct DisplayMode: Identifiable {
     }
 
     func refresh() {
+        recoverBuiltInIfNeeded()
         var result: [DisplayDevice] = []
         for displayID in native.displayIDs() {
             let uuid = native.uuid(displayID)
@@ -127,7 +136,13 @@ struct DisplayMode: Identifiable {
                 if !device.reading && !device.writing && device.pendingBrightness == nil && device.pendingVolume == nil {
                     readControls(device)
                 }
-                if ownedDisconnects.contains(uuid) { ownedDisconnects.remove(uuid) }
+                if CGDisplayIsActive(displayID) != 0 {
+                    ownedDisconnects.remove(uuid)
+                    if device.builtIn, let error = automaticRecoveryError {
+                        if message == error { message = nil }
+                        automaticRecoveryError = nil
+                    }
+                }
             } else { dimming.remove(uuid) }
             result.append(device)
         }
@@ -140,6 +155,64 @@ struct DisplayMode: Identifiable {
             if ownedDisconnects.contains(missing.id) { missing.connected = false; result.append(missing) }
         }
         displays = result.sorted { a, b in a.builtIn != b.builtIn ? a.builtIn : a.name < b.name }
+        updateRecoveryTimer()
+    }
+
+    private func recoverBuiltInIfNeeded() {
+        guard !shuttingDown, !sleeping, !connectionBusy else { return }
+        let owned = ownedDisconnects
+        guard displays.contains(where: { $0.builtIn && owned.contains($0.id) }) else { return }
+        // Query the OS afresh. Published rows may still describe the unplugged screen.
+        var states = native.displayIDs().map { id in
+            let uuid = native.uuid(id)
+            return DisplayConnectionState(uuid: uuid,
+                builtIn: displays.first(where: { $0.id == uuid })?.builtIn ?? (CGDisplayIsBuiltin(id) != 0),
+                online: CGDisplayIsOnline(id) != 0, active: CGDisplayIsActive(id) != 0)
+        }
+        // A disabled panel may be temporarily absent from the private display list.
+        for device in displays where device.builtIn && owned.contains(device.id) && !states.contains(where: { $0.uuid == device.id }) {
+            states.append(.init(uuid: device.id, builtIn: true, online: false, active: false))
+        }
+        let candidates = BuiltInDisplayRecovery.candidates(states, owned: owned, lidClosed: native.lidClosed,
+                                                          sleeping: sleeping, connectionBusy: connectionBusy)
+        guard !candidates.isEmpty, Date() >= nextRecoveryAttempt else { return }
+        nextRecoveryAttempt = Date().addingTimeInterval(2)
+        for uuid in candidates {
+            do {
+                try native.setConnected(uuid: uuid, enabled: true)
+                // Keep ownership until a later refresh confirms that the panel is active.
+                scheduleRefresh()
+            } catch {
+                let error = "Could not automatically restore the built-in display. Recovery will retry. \(error.localizedDescription)"
+                automaticRecoveryError = error; message = error
+            }
+        }
+    }
+
+    private func updateRecoveryTimer() {
+        guard displays.contains(where: { $0.builtIn && ownedDisconnects.contains($0.id) }) else {
+            recoveryTimer?.invalidate(); recoveryTimer = nil
+            return
+        }
+        guard recoveryTimer == nil else { return }
+        // A fallback is needed when unplugging the last screen produces no AppKit event.
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshForRecovery() }
+        }
+        timer.tolerance = 0.3
+        recoveryTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func refreshForRecovery() {
+        guard !shuttingDown, !sleeping else { return }
+        recoverBuiltInIfNeeded()
+        // Normal control reads are left to screen notifications and explicit refresh.
+        // A successful asynchronous enable is confirmed even if AppKit emits no event.
+        if displays.contains(where: { $0.builtIn && ownedDisconnects.contains($0.id) &&
+            native.currentID(for: $0.id).map { CGDisplayIsOnline($0) != 0 && CGDisplayIsActive($0) != 0 } == true }) {
+            refresh()
+        }
     }
 
     private func loadModes(_ device: DisplayDevice) {
@@ -322,7 +395,7 @@ struct DisplayMode: Identifiable {
         device.revision += 1; device.brightnessRevision += 1; device.volumeRevision += 1
         device.pendingBrightness?.cancel(); device.pendingBrightness = nil
         device.pendingVolume?.cancel(); device.pendingVolume = nil
-        if !enabled { ownedDisconnects.insert(device.id); dimming.remove(device.id) }
+        if !enabled { ownedDisconnects.insert(device.id); dimming.remove(device.id); updateRecoveryTimer() }
         do {
             try native.setConnected(uuid: device.id, enabled: enabled)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self, weak device] in
@@ -337,6 +410,7 @@ struct DisplayMode: Identifiable {
         } catch {
             connectionBusy = false; device.error = error.localizedDescription
             if !enabled { ownedDisconnects.remove(device.id) }
+            updateRecoveryTimer()
         }
     }
 
@@ -420,7 +494,9 @@ struct DisplayMode: Identifiable {
     }
 
     func shutdown() {
+        shuttingDown = true
         refreshWork?.cancel()
+        recoveryTimer?.invalidate(); recoveryTimer = nil
         cancelControlEdits()
         for uuid in ownedDisconnects {
             if (try? native.setConnected(uuid: uuid, enabled: true)) != nil { ownedDisconnects.remove(uuid) }
