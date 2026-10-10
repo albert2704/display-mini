@@ -23,8 +23,10 @@ No server, network request, account, or external runtime is involved. The app is
 
 | File | Responsibility |
 | --- | --- |
-| `Sources/DisplayMini/AppMain.swift` | App lifecycle, status item, popover, duplicate instance handling, global recovery shortcut. |
+| `Sources/DisplayMini/AppMain.swift` | App lifecycle, status item, popover, duplicate instance handling, shortcut dispatch and preference subscription. |
 | `Sources/DisplayMini/PanelView.swift` | Display cards, control bindings, DDC settings, resolution confirmation, footer. |
+| `Sources/DisplayMini/ShortcutController.swift` | Carbon registration lifecycle, validated hotkey IDs, per-action conflict reports. |
+| `Sources/DisplayMini/PresetsView.swift`, `ShortcutsView.swift` | Preset management and shortcut reference/settings. |
 | `Sources/DisplayMini/CompactSlider.swift` | Native NSSlider tracking, custom drawing, keyboard accessibility, release callbacks. |
 | `Sources/DisplayMini/DisplayStore.swift` | Observable device state, discovery, debounce, operation revisions, recovery, and persistence. |
 | `Sources/DisplayMini/Hardware.swift` | CoreGraphics/private API adapters and overlay windows. |
@@ -63,6 +65,16 @@ Detection uses one schema-versioned JSON `probe` process for both controls, taki
 
 Subprocess output is read through a nonblocking pipe and limited to 64 KiB. A deadline covers process execution and EOF collection, including a child retaining an inherited descriptor. There is no detached blocking reader. Diagnostic reports are assembled from explicitly allowed fields, never raw helper output or identity metadata.
 
+## Everyday controls
+
+`MonitorAudio` selects the last confirmed positive monitor volume, retaining it when the current volume becomes zero or a write fails. A display with no valid remembered value uses 25% on unmute. The mute button and shortcut share `toggleMute` and the normal DDC write/readback path.
+
+`PresetLibrary` validates a schema-1 Codable payload before use: at most 12 presets, unique IDs/names, 1–40 character names, at most 64 unique display UUIDs per preset, and finite normalized levels. Snapshots use settled confirmed values. A malformed library blocks edits and is preserved until the user chooses a backup/reset.
+
+`PresetPlan` matches current UUIDs and records skipped controls. The store runs one step at a time through the existing write paths and accepts completion once per step and batch token. UI completion waits for verified writes. Sleep, topology notifications, refresh, recovery and shutdown invalidate the batch and cancel pending work. An in-flight DDC command can still finish; `needsControlRead` blocks new captures and edits until a reconciliation read completes after outstanding work drains. Stale completions cannot start the next preset step or reapply software dimming. Opening the panel while a batch runs does not trigger refresh or interrupt it.
+
+`ShortcutController` owns Carbon hotkey references and its event handler. It validates the event signature and action ID, dispatches on the main actor and reports each registration failure. Everyday registrations can be released independently of recovery. No global event tap or arbitrary key interception is used. `DisplayStore.performShortcut` resolves `NSEvent.mouseLocation` against `NSScreen.frame` and then the corresponding display ID, with no other-screen fallback. Preset keys use insertion order instead of pointer targeting.
+
 ## Resolution transactions
 
 CoreGraphics supplies modes. The app filters for desktop usability and minimum logical dimensions, retains the current mode, and creates one slider choice per logical size. The full menu retains available density and refresh variants.
@@ -93,6 +105,10 @@ Domain: `dev.albert.DisplayMini` in local UserDefaults.
 | `forceSoftware.<UUID>` | Boolean. | Per-display brightness preference. |
 | `ddcTiming.<UUID>` | `standard` or `slow`. | Per-display response timing; unknown values use Standard. |
 | `software.<UUID>` | Fraction. | Per-display dimming state. |
+| `displayPresets` | Schema-1 JSON with names, IDs, screen UUIDs/names and brightness/volume. | Named local snapshots. |
+| `displayPresetsBackup` | Previous unreadable payload, created only on explicit reset. | Recoverable local backup. |
+| `volumeBeforeMute.<UUID>` | Last confirmed positive monitor volume. | Unmute after app restart. |
+| `everydayShortcutsEnabled` | Boolean, defaults to true. | Enable everyday hotkeys independently of recovery. |
 | `resolutionRecovery` | UUID and previous mode ID, logical size, pixel width, refresh. | Recover an unconfirmed mode after failure or restart. |
 
 The app does not upload these records. Monitor serials and UUIDs can identify local hardware and should be redacted from public reports. Synthetic values are used in tests.
