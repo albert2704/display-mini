@@ -115,6 +115,10 @@ The repository CI uploads build artifacts but does not automatically publish rel
 
 The default scripts perform ad hoc signing, not Developer ID signing or notarization. A maintainer distributing polished downloads needs an Apple Developer ID, an appropriate signing/notarization process, and validation of the nested helper with that process. Keep credentials out of source, issue reports, and public logs. Do not label a release notarized until its actual archive has passed that process.
 
+## Documentation images and walkthrough
+
+The README and user guide use native SwiftUI examples with isolated sample data. `python3 tooling/docs/render-screens.py` compiles a separate renderer with hardware substitutes; it does not launch the app or change display settings. The optional HyperFrames project under `tooling/docs/walkthrough` assembles a silent, captioned video from those images. See [media provenance and regeneration](media/README.md) for commands, limitations and validation. Video tooling is not part of the application build or a runtime dependency.
+
 ## Updating m1ddc
 
 The exact upstream commit is recorded in `Vendor/SOURCE.txt`. Preserve `Vendor/LICENSE`, review upstream changes, and reapply or remove local patches deliberately. `THIRD_PARTY_NOTICES.md` lists the local transport changes. Revalidate real DDC replies and all documented compatibility claims after changing the helper.

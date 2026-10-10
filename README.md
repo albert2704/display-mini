@@ -3,11 +3,32 @@
 [![Build and checks](https://github.com/albert2704/display-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/albert2704/display-mini/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small, open source macOS menu bar app for **brightness, resolution, monitor volume and mute, presets, keyboard shortcuts, and display connection switches**. Written in Swift with SwiftUI and AppKit, inspired by the compact controls in BetterDisplay.
+A small, open source macOS menu bar app for **brightness, resolution, monitor volume, presets, and keyboard shortcuts**. Control each screen from one compact panel, or record a shortcut for the controls you use every day.
 
-Display Mini runs independently. It is not affiliated with BetterDisplay and does not require a BetterDisplay license or installation.
+<p align="center">
+  <img src="docs/media/panel.png" width="300" alt="Display Mini panel with brightness and resolution for two displays, external speaker volume, mute, and footer controls">
+</p>
+
+*Native interface examples from version 0.3.0, rendered with sample data. Monitor support and available resolutions depend on your setup.*
+
+[Install](#install) · [Quick tour](#quick-tour) · [User guide](docs/USER_GUIDE.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+
+Written in Swift with SwiftUI and AppKit, inspired by the compact controls in BetterDisplay. Display Mini runs independently and is not affiliated with BetterDisplay or DisplayBuddy.
 
 **Status: early preview.** The app has been built and used on an M1 Pro with an LG IPS QHD display. Hardware compatibility is still being validated. Native brightness and connection controls use private macOS APIs, and downloaded builds are locally signed rather than Developer ID signed or notarized.
+
+## Quick tour
+
+The silent, captioned walkthrough covers the panel, presets, and recording a shortcut. It uses sample UI states rather than a live hardware recording.
+
+[![Animated Display Mini tour showing controls, presets, and keyboard recording](docs/media/walkthrough.gif)](docs/media/walkthrough.mp4)
+
+[Download the 24-second MP4](docs/media/walkthrough.mp4) · [Read the text walkthrough](docs/USER_GUIDE.md#quick-start)
+
+| Save your setup | Record your keys | Check monitor support |
+| --- | --- | --- |
+| <img src="docs/media/presets.png" width="250" alt="Work and Evening presets with saved brightness and volume values"> | <img src="docs/media/shortcut-recorded.png" width="250" alt="Shortcut editor with Control Shift K recorded and ready to save"> | <img src="docs/media/diagnostics.png" width="225" alt="Monitor diagnostics showing Standard response timing and separate brightness and volume results"> |
+| [Presets](docs/USER_GUIDE.md#presets) | [Keyboard shortcuts](docs/USER_GUIDE.md#keyboard-shortcuts) | [Connection diagnostics](docs/USER_GUIDE.md#connection-diagnostics-and-response-timing) |
 
 ## What it does
 
@@ -93,7 +114,7 @@ Keep another visible display available when first testing connection controls. R
 
 ## Validation and limits
 
-Nineteen automated logic cases cover 153 assertions, including probe validation, report privacy, brightness math, mode selection, display identity, unplug recovery, mute restore, preset validation and batch completion. Five shortcut scenarios cover saved preferences, failed-edit rollback, dispatch, reset, recovery, and conflicts. Five store scenarios exercise the actual control orchestration with simulated hardware, including canceled writes, recovery reconciliation and shortcut guards. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
+Nineteen automated logic cases cover 153 assertions, including probe validation, report privacy, brightness math, mode selection, display identity, unplug recovery, mute restore, preset validation and batch completion. Nine shortcut scenarios cover saved preferences, failed-edit rollback, dispatch, reset, recovery, conflicts, keyboard recording and cancellation. Five store scenarios exercise the actual control orchestration with simulated hardware, including canceled writes, recovery reconciliation and shortcut guards. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
 
 DDC discovery inspects up to 64 online displays and matches the control service's EDID against the selected screen. Connections without readable EDID and monitors reporting identical identities may remain unavailable. Slow timing can help delayed replies; it cannot make an incompatible dock forward DDC.
 
