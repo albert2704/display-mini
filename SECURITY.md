@@ -18,6 +18,8 @@ Shortcut recording uses a local AppKit event monitor only during an explicit rec
 
 Custom display names and favorite resolution descriptors are also stored locally under `displayPersonalization`, keyed by display UUID. Descriptors contain dimensions, pixel dimensions and refresh rate, not transient mode IDs. Names and stars are never added to copied diagnostic reports. Resetting unreadable settings retains the original data under `displayPersonalizationBackup`.
 
+`linkedBrightnessEnabled` stores the optional linked brightness preference. Advanced contrast/input probe results and pending input choices stay in memory. Input switching requires an explicit confirmation and is not part of presets or shortcuts. A delivered input command may end the monitor connection, so its result is reported without claiming readback confirmation.
+
 ## Process and OS boundaries
 
 DDC commands go to a helper bundled inside the app. The helper path is absolute, and arguments are passed to Process as an array. The app does not invoke a shell to construct monitor commands. Monitor processes have bounded timeouts.

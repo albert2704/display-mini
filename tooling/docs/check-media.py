@@ -16,10 +16,11 @@ for name in ['README.md', 'docs/USER_GUIDE.md', 'docs/DEVELOPMENT.md', 'docs/med
             continue
         assert (document.parent / target).exists(), f'{name}: missing {target}'
 
-expected = {'panel': (600, 824), 'presets': (760, 880), 'diagnostics': (680, 1180),
+expected = {'panel': (600, 900), 'presets': (760, 880), 'diagnostics': (680, 1180),
             'shortcuts': (760, 1040), 'shortcut-editor': (760, 1040),
             'shortcut-listening': (760, 1040), 'shortcut-recorded': (760, 1040),
-            'display-settings': (720, 1120), 'display-settings-dark': (720, 1120)}
+            'display-settings': (720, 1120), 'display-settings-dark': (720, 1120),
+            'advanced': (600, 1320), 'advanced-dark': (600, 1320)}
 for name, dimensions in expected.items():
     data = (root / f'docs/media/{name}.png').read_bytes()
     assert data[:8] == b'\x89PNG\r\n\x1a\n', name
@@ -38,4 +39,4 @@ assert gif[:6] in (b'GIF87a', b'GIF89a')
 assert struct.unpack('<HH', gif[6:10]) == (800, 450)
 for item in (root / 'docs/media').iterdir():
     assert item.stat().st_size < 10 * 1024 * 1024, f'{item.name}: exceeds documentation size budget'
-print('Documentation links, nine PNGs, GIF dimensions, MP4 codec/duration and file sizes pass.')
+print('Documentation links, eleven PNGs, GIF dimensions, MP4 codec/duration and file sizes pass.')

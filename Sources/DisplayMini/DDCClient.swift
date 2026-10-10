@@ -105,4 +105,22 @@ final class DDCClient {
             DispatchQueue.main.async { completion(verified) }
         }
     }
+
+    func readAdvanced(uuid: String, timing: DDCTiming, completion: @escaping (Result<AdvancedDDCProbe, DDCFailure>) -> Void) {
+        queue.async {
+            let result = self.runner.run(["--delay-ms", String(timing.delayMS), "display", uuid, "probe-advanced"]).flatMap { data -> Result<AdvancedDDCProbe, DDCFailure> in
+                guard let probe = AdvancedDDCProbe.parse(data, expectedUUID: uuid, timing: timing) else { return .failure(.invalidResponse) }
+                return .success(probe)
+            }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
+
+    /// Input switching can remove the DDC link. Success means command delivery only.
+    func sendInput(uuid: String, timing: DDCTiming, input: MonitorInput, completion: @escaping (Result<Void, DDCFailure>) -> Void) {
+        queue.async {
+            let result = self.runner.run(["--delay-ms", String(timing.delayMS), "display", uuid, "set", "input", String(input.rawValue)]).map { _ in () }
+            DispatchQueue.main.async { completion(result) }
+        }
+    }
 }

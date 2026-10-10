@@ -185,11 +185,11 @@ public struct DDCControlProbe: Decodable, Sendable {
         if let errorCode { text += String(format: " · I/O 0x%08X", errorCode) }
         return text
     }
-    fileprivate var isValid: Bool {
+    func isValid(continuous: Bool) -> Bool {
         guard (0...3).contains(attempts), (status == .notAvailable) == (attempts == 0) else { return false }
         if let current, !(0...65535).contains(current) { return false }
         if let maximum, !(0...65535).contains(maximum) { return false }
-        return status != .ok || fraction != nil
+        return status != .ok || (continuous ? fraction != nil : current != nil)
     }
 }
 
@@ -217,7 +217,7 @@ public struct DDCProbe: Decodable, Sendable {
     public static func parse(_ data: Data, expectedUUID: String, timing: DDCTiming) -> DDCProbe? {
         guard let probe = try? JSONDecoder().decode(Self.self, from: data), probe.schema == 1,
               let expected = UUID(uuidString: expectedUUID), UUID(uuidString: probe.uuid) == expected,
-              probe.delayMS == timing.delayMS, probe.brightness.isValid, probe.volume.isValid else { return nil }
+              probe.delayMS == timing.delayMS, probe.brightness.isValid(continuous: true), probe.volume.isValid(continuous: true) else { return nil }
         let routed = probe.transport == .standard || probe.transport == .mcdp
         guard routed ? probe.serviceCount == 1 : (probe.transport == .none ? probe.serviceCount == 0 : probe.serviceCount >= 0),
               routed ? (probe.brightness.status != .notAvailable && probe.volume.status != .notAvailable) :

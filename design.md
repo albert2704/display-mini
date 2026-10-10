@@ -9,3 +9,5 @@ Character: compact macOS utility, translucent surfaces, rounded title strips, re
 Each display appears in one card, headed by its name, display icon, and connection switch. Brightness comes first, volume only for external displays, then resolution. DDC configuration is a compact blue affordance. The panel is 300 points wide and scrolls when several displays are present. A small footer provides recovery, refresh and quit. No marketing page, oversized branding, unrelated display features, or synthetic monitor data in the normal app.
 
 Use the system font and native accessibility for all controls. Material follows the user's macOS appearance. Keep labels legible in both appearances. Long display names truncate; accessible labels retain the full name.
+
+The panel has Displays and Advanced tabs above its scroll area. Advanced uses the same 300 point width, rounded cards and small system typography. Linked brightness comes first, followed by each screen's refresh rate and external hardware controls. Recovery, messages and resolution confirmation stay outside the tabs. Advanced can grow to 730 points with messages and otherwise scrolls.

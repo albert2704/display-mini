@@ -22,11 +22,17 @@ Mute is implemented as confirmed volume zero with last-volume restore through th
 ## Practical candidates for later
 
 * Wake settling and per-display retry policy, to address monitors that become ready later than macOS.
-* Optional synchronization across selected screens and preset scheduling.
+* Selected-screen synchronization groups, following system brightness changes, and preset scheduling.
 * Carefully scoped media-key support.
 * Manual resolution of duplicate monitor identities, only after a stable port mapping can be tested across reconnects.
 
 These are candidates, not promises or implemented features. Implemented features are listed above; broader automation remains outside this update.
+
+## Advanced controls
+
+The user requested more DisplayBuddy-style functionality in an Advanced tab. [DisplayBuddy's expanded controls](https://displaybuddy.app/docs/getting-started) and [sync feature](https://displaybuddy.app/) informed contrast, input switching and optional linked brightness. [BetterDisplay](https://github.com/waydabber/BetterDisplay) also lists input, synchronization and refresh controls. Display Mini implements a bounded subset: standard DDC contrast/input, app-originated brightness edits across ready screens, and existing macOS refresh variants with Keep/Revert.
+
+Input codes are common choices, not a monitor capability inventory. Input zero does not establish a current source. Contrast support was read successfully from the development LG monitor, but its standard input read returned zero, so input switching is disabled there. No vendor specific or Wi-Fi protocol was copied or added.
 
 ## Cable removal recovery investigation
 

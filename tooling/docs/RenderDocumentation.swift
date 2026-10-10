@@ -44,6 +44,13 @@ extension ShortcutsView {
     }
 }
 
+extension PanelView {
+    init(documentingAdvanced store: DisplayStore) {
+        self.init(store: store)
+        _tab = State(initialValue: .advanced)
+    }
+}
+
 extension ShortcutRecorder {
     func documentationState(listening: Bool = false, recorded: String? = nil) {
         isRecording = listening
@@ -56,9 +63,9 @@ extension ShortcutRecorder {
         NSApplication.shared.setActivationPolicy(.prohibited)
         defer { DocumentationDefaults.shared.removePersistentDomain(forName: DocumentationDefaults.domain) }
         let output = URL(fileURLWithPath: CommandLine.arguments[1])
-        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared, personalizationDefaults: DocumentationDefaults.shared)
+        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared, personalizationDefaults: DocumentationDefaults.shared, advancedDefaults: DocumentationDefaults.shared)
         store.seedDocumentation()
-        try render(PanelView(store: store), size: .init(width: 300, height: 412), name: "panel", output: output)
+        try render(PanelView(store: store), size: .init(width: 300, height: 450), name: "panel", output: output)
         try render(PresetsView(store: store), size: .init(width: 380, height: 440), name: "presets", output: output)
         try render(DDCSettings(device: store.displays[1], store: store), size: .init(width: 340, height: 590), name: "diagnostics", output: output)
         try render(ShortcutsView(store: store), size: .init(width: 380, height: 520), name: "shortcuts", output: output)
@@ -77,11 +84,22 @@ extension ShortcutRecorder {
         precondition(store.setFavorite(external, mode: external.modes[0].favorite!, enabled: true))
         try render(DisplaySettingsView(device: external, store: store), size: .init(width: 360, height: 560), name: "display-settings", output: output)
         try render(DisplaySettingsView(device: external, store: store), size: .init(width: 360, height: 560), name: "display-settings-dark", output: output, dark: true)
-        print("Rendered 9 native UI examples with isolated sample data.")
+        let advancedReport = """
+        {"schema":1,"uuid":"00000000-0000-4000-8000-000000000002","transport":"standard","serviceCount":1,
+        "delayMS":50,"contrast":{"status":"ok","current":70,"maximum":100,"attempts":1},
+        "input":{"status":"ok","current":17,"maximum":0,"attempts":1}}
+        """
+        external.advancedProbe = AdvancedDDCProbe.parse(Data(advancedReport.utf8), expectedUUID: external.id, timing: .standard)
+        external.contrast = 0.7
+        precondition(external.advancedProbe != nil)
+        try render(PanelView(documentingAdvanced: store), size: .init(width: 300, height: 660), name: "advanced", output: output)
+        try render(PanelView(documentingAdvanced: store), size: .init(width: 300, height: 660), name: "advanced-dark", output: output, dark: true)
+        print("Rendered 11 native UI examples with isolated sample data.")
     }
 
     @MainActor static func render<V: View>(_ view: V, size: NSSize, name: String, output: URL, dark: Bool = false) throws {
         let content = view.environment(\.colorScheme, dark ? .dark : .light).environment(\.controlActiveState, .active)
+            .transaction { $0.animation = nil; $0.disablesAnimations = true }
             .background(Color(nsColor: .windowBackgroundColor))
         let host = NSHostingView(rootView: content)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
