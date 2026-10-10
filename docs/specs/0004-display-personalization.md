@@ -36,10 +36,11 @@ Add an accessible settings button beside each card title. Its 360 point popover 
 
 ## Build plan
 
-1. Add validated personalization storage and regression checks for malformed data, independent displays, limits and mode identity.
-2. Connect storage to display names and favorites, preserving routing and resolution recovery; test persistence and unreadable data recovery.
-3. Build the settings popover and favorite resolution menu using the current design system.
-4. Build and test, inspect native UI states, update documentation, and publish a PR with regular commits.
+- [x] Add validated personalization storage and regression checks for malformed data, independent displays, limits and mode identity.
+- [x] Connect storage to display names and favorites, preserving routing and resolution recovery; test persistence and unreadable data recovery.
+- [x] Build the settings popover and favorite resolution menu using the current design system.
+- [x] Build and test, inspect native UI states, and update documentation.
+- [ ] Publish a PR with regular commits.
 
 ## Consequences
 

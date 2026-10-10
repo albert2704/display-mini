@@ -4,6 +4,10 @@
 
 ### Added
 
+* Custom screen names with system-name restore and local persistence.
+* Favorite resolutions per display, including refresh and density variants, with unavailable-mode retention and the existing Keep/Revert preview.
+* Display Settings popover, validated preference storage, backup/reset, and seven personalization regression scenarios.
+
 * Monitor mute and unmute with persistent last confirmed volume restore.
 * Named brightness/volume presets with save, rename, apply and delete, matched by display UUID.
 * Global brightness, volume and mute shortcuts targeting the screen under the pointer, plus keys for the first three presets.

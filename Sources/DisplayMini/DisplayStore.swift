@@ -316,7 +316,8 @@ struct DisplayMode: Identifiable {
     }
 
     @discardableResult func renameDisplay(_ device: DisplayDevice, name: String) -> Bool {
-        editPersonalization { try $0.rename(uuid: device.id, name: name) }
+        guard canPersonalize(device) else { return false }
+        return editPersonalization { try $0.rename(uuid: device.id, name: name) }
     }
 
     func favoriteModes(_ device: DisplayDevice) -> [DisplayMode] {
@@ -327,6 +328,7 @@ struct DisplayMode: Identifiable {
     }
 
     @discardableResult func setFavorite(_ device: DisplayDevice, mode: FavoriteResolution, enabled: Bool) -> Bool {
+        guard canPersonalize(device) else { return false }
         guard !enabled || (device.connected && device.modes.contains(where: { $0.favorite == mode })) else {
             personalizationMessage = "This resolution is no longer available. Refresh the display and try again."
             return false
@@ -334,14 +336,25 @@ struct DisplayMode: Identifiable {
         return editPersonalization { try $0.setFavorite(uuid: device.id, mode: mode, enabled: enabled) }
     }
 
+    private func canPersonalize(_ device: DisplayDevice) -> Bool {
+        guard UUID(uuidString: device.id) != nil else {
+            personalizationMessage = "This screen has no stable identity yet. Reconnect it and refresh before saving display settings."
+            return false
+        }
+        return true
+    }
+
     func applyFavorite(_ device: DisplayDevice, favorite: FavoriteResolution) {
         guard !controlsBusy, !sleeping else { return }
         guard device.connected, displays.contains(where: { $0 === device }),
               personalization.entry(for: device.id).favorites.contains(favorite),
-              let currentID = native.currentID(for: device.id), currentID == device.displayID else {
+              let currentID = native.currentID(for: device.id), currentID == device.displayID,
+              let current = CGDisplayCopyDisplayMode(currentID) else {
             message = "This favorite resolution is not currently available."
             return
         }
+        device.currentModeID = current.ioDisplayModeID
+        guard DisplayMode(native: current).favorite != favorite else { return }
         let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
         let modes = CGDisplayCopyAllDisplayModes(currentID, options) as? [CGDisplayMode] ?? []
         guard let mode = modes.filter({ $0.isUsableForDesktopGUI() }).map({ DisplayMode(native: $0) })
