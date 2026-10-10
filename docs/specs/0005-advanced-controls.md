@@ -28,7 +28,7 @@ The segmented tab picker sits above the scroll area. Advanced starts with a comp
 | --- | --- |
 | Name, connection, modes | Existing DisplayDevice, current CoreGraphics enumeration |
 | Contrast percentage | Valid probe current / maximum, rounded for display; write rounds fraction × maximum |
-| Input status | Standard VCP 0x60 current value; noncontinuous, so maximum may be zero |
+| Input status | Standard VCP 0x60 positive current value; noncontinuous, so maximum may be zero. Current zero leaves input unavailable without suppressing contrast |
 | Input choices | Fixed common MCCS codes: VGA 1, DVI 3/4, DisplayPort 15/16, HDMI 17/18; unknown current codes displayed in hex |
 | Refresh choices | FavoriteResolution geometry and millihertz identity from current modes, without favorite persistence |
 | Linked brightness | UserDefaults `linkedBrightnessEnabled`, false if absent; injected defaults for tests |

@@ -131,9 +131,12 @@ struct AdvancedDisplayCard: View {
                 }
                 Text(store.inputSwitchNeedsBuiltInRestore ? "Use Restore Displays to reconnect the built-in screen before switching input." : "Common inputs, not detected ports. Use the monitor’s buttons to return to the Mac.")
                     .foregroundStyle(.secondary)
-            } else { Text(probe.input.status.title).foregroundStyle(.secondary) }
-            if probe.contrast.status != .ok || probe.input.status != .ok {
+            } else { Text(probe.inputStatusTitle).foregroundStyle(.secondary) }
+            if probe.contrast.status != .ok || probe.currentInput == nil {
                 Text("Check DDC/CI in the monitor menu. Try Slow timing in Monitor Controls or a direct cable connection.").foregroundStyle(.secondary)
+            }
+            if probe.input.current == 0 {
+                Text("Some monitors need vendor specific input commands. This version supports standard DDC input switching.").foregroundStyle(.secondary)
             }
         }
     }

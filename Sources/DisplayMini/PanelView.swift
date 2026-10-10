@@ -90,7 +90,7 @@ struct PanelView: View {
     }
     private var panelHeight: CGFloat {
         if tab == .advanced {
-            return min(730, 630 + (store.pendingResolutionName == nil ? 0 : 108) + (store.message == nil ? 0 : 65))
+            return min(730, 660 + (store.pendingResolutionName == nil ? 0 : 108) + (store.message == nil ? 0 : 65))
         }
         let cards = store.displays.reduce(CGFloat(0)) { $0 + ($1.connected ? ($1.builtIn ? 139 : 211) : 78) + ($1.error == nil ? 0 : 50) }
         return min(730, max(180, cards + CGFloat(max(0, store.displays.count - 1)) * PanelStyle.gap + 90)

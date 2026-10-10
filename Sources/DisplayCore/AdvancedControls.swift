@@ -9,7 +9,13 @@ public struct AdvancedDDCProbe: Decodable, Sendable {
     public let contrast: DDCControlProbe
     public let input: DDCControlProbe
 
-    public var currentInput: Int? { input.status == .ok ? input.current : nil }
+    public var currentInput: Int? {
+        guard input.status == .ok, let value = input.current, value > 0 else { return nil }
+        return value
+    }
+    public var inputStatusTitle: String {
+        input.current == 0 ? "The monitor did not identify its input" : input.status.title
+    }
 
     public static func parse(_ data: Data, expectedUUID: String, timing: DDCTiming) -> Self? {
         guard data.count <= 65_536,

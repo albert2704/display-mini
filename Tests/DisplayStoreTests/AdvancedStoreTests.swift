@@ -11,10 +11,10 @@ enum AdvancedStoreTests {
         store.displays = [device]
         return (store, device)
     }
-    static func probe() -> AdvancedDDCProbe {
+    static func probe(input: Int = 17) -> AdvancedDDCProbe {
         let json: [String: Any] = ["schema": 1, "uuid": uuid, "transport": "standard", "serviceCount": 1, "delayMS": 50,
             "contrast": ["status": "ok", "attempts": 1, "current": 100, "maximum": 200],
-            "input": ["status": "ok", "attempts": 1, "current": 17, "maximum": 0]]
+            "input": ["status": "ok", "attempts": 1, "current": input, "maximum": 0]]
         return AdvancedDDCProbe.parse(try! JSONSerialization.data(withJSONObject: json), expectedUUID: uuid, timing: .standard)!
     }
     @MainActor static func run() async {
@@ -56,6 +56,9 @@ enum AdvancedStoreTests {
     }
     @MainActor static func inputDeliveryAndRecoveryGuard(_ defaults: UserDefaults) {
         let (store, device) = fixture(defaults)
+        device.advancedProbe = probe(input: 0)
+        store.switchInput(device, to: .hdmi1)
+        precondition(store.ddc.inputs.isEmpty, "An unidentified input cannot enable switching")
         device.advancedProbe = probe(); device.contrast = 0.5
         store.switchInput(device, to: .hdmi1)
         precondition(store.ddc.inputs.isEmpty)
