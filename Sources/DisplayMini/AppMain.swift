@@ -1,13 +1,13 @@
 import AppKit
-import Carbon
+import Combine
 import SwiftUI
 
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var store: DisplayStore!
-    private var hotKey: EventHotKeyRef?
-    private var eventHandler: EventHandlerRef?
+    private var shortcuts: ShortcutController?
+    private var shortcutSetting: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let bundleID = Bundle.main.bundleIdentifier,
@@ -27,14 +27,31 @@ import SwiftUI
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: PanelView(store: store))
         popover.animates = false
-        registerRecoveryShortcut()
+        shortcuts = ShortcutController(perform: { [weak self] action in
+            guard let self else { return }
+            if action == .restore { self.store.restoreDisplays(); self.showPanel(refresh: false) }
+            else if !self.store.performShortcut(action) { self.showPanel(refresh: false) }
+        }, report: { [weak self] errors in
+            self?.store.shortcutErrors = errors
+        }, intercept: { [weak self] binding in
+            self?.store.shortcutRecorder.intercept(binding) ?? false
+        })
+        shortcuts?.configure(store.shortcutPreferences, enabled: store.shortcutsEnabled)
+        store.updateShortcutRegistration = { [weak self] preferences in
+            guard let self, let shortcuts = self.shortcuts else { return "Keyboard shortcuts are not ready yet." }
+            return shortcuts.configure(preferences, enabled: self.store.shortcutsEnabled, atomic: true)
+        }
+        shortcutSetting = store.$shortcutsEnabled.dropFirst().sink { [weak self] enabled in
+            guard let self else { return }
+            self.shortcuts?.configure(self.store.shortcutPreferences, enabled: enabled)
+        }
         showPanel()
     }
 
     @objc private func togglePanel() { popover.isShown ? popover.performClose(nil) : showPanel() }
-    private func showPanel() {
+    private func showPanel(refresh: Bool = true) {
         guard let button = statusItem?.button else { return }
-        store.refresh()
+        if refresh && store.applyingPresetName == nil { store.refresh() }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
         NSApp.activate(ignoringOtherApps: true)
@@ -42,23 +59,11 @@ import SwiftUI
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { showPanel(); return true }
 
-    private func registerRecoveryShortcut() {
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let pointer = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
-            guard let context else { return OSStatus(eventNotHandledErr) }
-            let delegate = Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
-            Task { @MainActor in delegate.store.restoreDisplays(); delegate.showPanel() }
-            return noErr
-        }, 1, &eventType, pointer, &eventHandler)
-        let result = RegisterEventHotKey(UInt32(kVK_ANSI_R), UInt32(controlKey | optionKey | cmdKey), EventHotKeyID(signature: 0x444D494E, id: 1), GetApplicationEventTarget(), 0, &hotKey)
-        if result != noErr { store.message = "The restore shortcut is in use. Restore Displays is still available in the panel." }
-    }
-
     func applicationWillTerminate(_ notification: Notification) {
+        store?.shortcutRecorder.endEditing()
         store?.shutdown()
-        if let hotKey { UnregisterEventHotKey(hotKey) }
-        if let eventHandler { RemoveEventHandler(eventHandler) }
+        shortcutSetting = nil
+        shortcuts?.shutdown()
     }
 }
 

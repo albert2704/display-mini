@@ -28,7 +28,93 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         suite.testUnplugRecoveryRespectsLidSleepAndTransactions()
         suite.testHardwareUnplugOverridesStaleWindowServerState()
         suite.testHardwareLinkEventsRejectUnknownAndRespectNewestState()
-        print("Passed 14 control tests (\(checks) assertions).")
+        suite.testMuteRestoresOnlyConfirmedValidVolume()
+        suite.testPresetPersistenceAndNames()
+        suite.testPresetDataRejectsCorruption()
+        suite.testPresetPlanSkipsMissingAndUnsupportedControls()
+        suite.testPresetProgressRejectsDuplicateAndStaleCallbacks()
+        print("Passed 19 control tests (\(checks) assertions).")
+    }
+
+    private var presetDisplay: PresetDisplay {
+        .init(uuid: fixtureUUID, name: "Synthetic monitor", brightness: 0.7, volume: 0.4)
+    }
+    func testPresetPersistenceAndNames() {
+        var library = PresetLibrary()
+        try! library.save(name: "  Work  ", displays: [presetDisplay])
+        XCTAssertEqual(library.presets.first?.name, "Work")
+        XCTAssertTrue((try? library.save(name: "work", displays: [presetDisplay])) == nil)
+        for name in ["", "   ", "bad\nname", String(repeating: "a", count: 41)] {
+            XCTAssertTrue((try? library.save(name: name, displays: [presetDisplay])) == nil)
+        }
+        try! library.rename(id: library.presets[0].id, name: "Evening")
+        let restored = try! PresetLibrary.decode(JSONEncoder().encode(library))
+        XCTAssertEqual(restored, library)
+        for index in 1...11 { try! library.save(name: "Preset \(index)", displays: [presetDisplay]) }
+        XCTAssertTrue((try? library.save(name: "Overflow", displays: [presetDisplay])) == nil)
+        library.delete(id: library.presets[0].id)
+        XCTAssertEqual(library.presets.count, 11)
+        XCTAssertEqual(library.presets[0].name, "Preset 1")
+    }
+    func testPresetDataRejectsCorruption() {
+        var library = PresetLibrary()
+        for displays in [[], [presetDisplay, presetDisplay],
+                         [.init(uuid: "invalid", name: "Bad", brightness: 0.5, volume: nil)],
+                         [.init(uuid: fixtureUUID, name: "Bad", brightness: .nan, volume: nil)],
+                         [.init(uuid: fixtureUUID, name: "Bad", brightness: 0.5, volume: 2)]] {
+            XCTAssertTrue((try? library.save(name: "Invalid", displays: displays)) == nil)
+        }
+        XCTAssertNil(try? PresetLibrary.decode(Data("{".utf8)))
+        XCTAssertNil(try? PresetLibrary.decode(Data("{\"schema\":2,\"presets\":[]}".utf8)))
+        try! library.save(name: "Work", displays: [presetDisplay])
+        var json = try! JSONSerialization.jsonObject(with: JSONEncoder().encode(library)) as! [String: Any]
+        let presets = json["presets"] as! [[String: Any]]
+        json["presets"] = presets + presets
+        XCTAssertNil(try? PresetLibrary.decode(JSONSerialization.data(withJSONObject: json)))
+        var preset = presets[0]; preset["name"] = "  untrimmed  "
+        json["presets"] = [preset]
+        XCTAssertNil(try? PresetLibrary.decode(JSONSerialization.data(withJSONObject: json)))
+    }
+    func testPresetPlanSkipsMissingAndUnsupportedControls() {
+        let second = PresetDisplay(uuid: "00000000-0000-4000-8000-000000000002", name: "Other", brightness: 0.9, volume: 0.3)
+        let preset = DisplayPreset(name: "Work", displays: [presetDisplay, second])
+        let plan = PresetPlan(preset: preset, available: [fixtureUUID: false, "new-screen": true])
+        XCTAssertEqual(plan.steps.count, 1)
+        XCTAssertEqual(plan.steps[0].displayUUID, fixtureUUID)
+        XCTAssertEqual(plan.steps[0].control.rawValue, "brightness")
+        XCTAssertEqual(plan.steps[0].value, 0.7)
+        XCTAssertEqual(plan.skippedControls, 3)
+        XCTAssertTrue(PresetPlan(preset: preset, available: [:]).steps.isEmpty)
+        let full = PresetPlan(preset: preset, available: [fixtureUUID: true, second.uuid: true])
+        XCTAssertEqual(full.steps.count, 4)
+        XCTAssertEqual(full.skippedControls, 0)
+    }
+    func testPresetProgressRejectsDuplicateAndStaleCallbacks() {
+        let plan = PresetPlan(preset: .init(name: "Work", displays: [presetDisplay]), available: [fixtureUUID: true])
+        var progress = PresetProgress(steps: plan.steps)
+        XCTAssertFalse(progress.finish(token: UUID(), step: plan.steps[0].id, success: false))
+        XCTAssertEqual(progress.pending.count, 2)
+        XCTAssertTrue(progress.finish(token: progress.token, step: plan.steps[0].id, success: false))
+        XCTAssertFalse(progress.finish(token: progress.token, step: plan.steps[0].id, success: false))
+        XCTAssertEqual(progress.failures, 1)
+        XCTAssertTrue(progress.finish(token: progress.token, step: plan.steps[1].id, success: true))
+        XCTAssertTrue(progress.pending.isEmpty)
+        var next = PresetProgress(steps: plan.steps)
+        XCTAssertFalse(next.finish(token: progress.token, step: plan.steps[0].id, success: true))
+        XCTAssertEqual(next.pending.count, 2)
+    }
+
+    func testMuteRestoresOnlyConfirmedValidVolume() {
+        XCTAssertEqual(MonitorAudio.toggledVolume(current: 0.8, remembered: nil), 0)
+        XCTAssertEqual(MonitorAudio.toggledVolume(current: 0, remembered: 0.8), 0.8)
+        XCTAssertEqual(MonitorAudio.rememberedVolume(confirmed: 0, previous: 0.8), 0.8)
+        XCTAssertEqual(MonitorAudio.rememberedVolume(confirmed: 0.4, previous: 0.8), 0.4)
+        // A failed write does not produce a confirmed value, so the last good level survives.
+        XCTAssertEqual(MonitorAudio.rememberedVolume(confirmed: nil, previous: 0.8), 0.8)
+        for invalid in [Double.nan, Double.infinity, -1, 0, 1.1] {
+            XCTAssertEqual(MonitorAudio.toggledVolume(current: 0, remembered: invalid), 0.25)
+        }
+        XCTAssertEqual(MonitorAudio.toggledVolume(current: 0, remembered: nil), 0.25)
     }
 
     func testHardwareUnplugOverridesStaleWindowServerState() {

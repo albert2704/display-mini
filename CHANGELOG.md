@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 — Unreleased
+
+### Added
+
+* Monitor mute and unmute with persistent last confirmed volume restore.
+* Named brightness/volume presets with save, rename, apply and delete, matched by display UUID.
+* Global brightness, volume and mute shortcuts targeting the screen under the pointer, plus keys for the first three presets.
+* Editable shortcuts for every action, saved key/modifier bindings, per-action defaults, reset all, and conflict-safe edits.
+* Record shortcut combinations from the keyboard, with Escape/blur cancellation and capture of existing bindings without running display actions.
+* Shortcut enable preference, visible key reference, and per-action registration conflict reporting, with a fixed recovery fallback.
+* Sequential, verified preset application with skipped-control and failure summaries.
+* Preset validation, persistence, completion and real store orchestration regression tests.
+
+### Fixed
+
+* Interrupted monitor writes now trigger a reconciliation read before presets can capture levels again.
+* Opening the panel during preset application preserves the running operation.
+* Conflicting edits are blocked during preset writes; recovery remains available and interrupts the batch.
+
 ## 0.2.0 — Unreleased
 
 ### Added

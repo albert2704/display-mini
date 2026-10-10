@@ -3,7 +3,7 @@
 [![Build and checks](https://github.com/albert2704/display-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/albert2704/display-mini/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small, open source macOS menu bar app for **brightness, resolution, external monitor volume, and display connection switches**. Written in Swift with SwiftUI and AppKit, inspired by the compact controls in BetterDisplay.
+A small, open source macOS menu bar app for **brightness, resolution, monitor volume and mute, presets, keyboard shortcuts, and display connection switches**. Written in Swift with SwiftUI and AppKit, inspired by the compact controls in BetterDisplay.
 
 Display Mini runs independently. It is not affiliated with BetterDisplay and does not require a BetterDisplay license or installation.
 
@@ -16,6 +16,9 @@ Display Mini runs independently. It is not affiliated with BetterDisplay and doe
 | Brightness | Native brightness for built in and Apple displays; DDC/CI for supported external monitors; software dimming when hardware control is unavailable. |
 | Combined brightness | Uses the bottom 20% of the slider for extra software dimming below the hardware minimum. |
 | Monitor volume | Adjusts the external monitor's speakers through DDC/CI, with readback after a write. |
+| Mute | Silences monitor speakers and restores the last confirmed nonzero volume. |
+| Presets | Saves named brightness/volume snapshots and applies them to matching connected screens. |
+| Keyboard shortcuts | Controls the screen under the pointer; also applies the first three presets. |
 | Resolution | Lists modes reported by macOS, including available HiDPI and refresh variants. A preview reverts after 15 seconds unless kept. |
 | Connection switch | Disconnects a display from the desktop and reconnects it. The last active display is protected. |
 | Recovery | Reconnects displays disconnected by this app, removes dimming, and retries pending resolution recovery. |
@@ -52,6 +55,22 @@ open "dist/Display Mini.app"
 
 No third party packages are downloaded during the build. The app bundles the vendored monitor helper. The supported scripts work with Command Line Tools without an Xcode project.
 
+## Everyday shortcuts
+
+Default bindings (editable from the keyboard button): hold **Control + Option + Command** with:
+
+| Key | Action |
+| --- | --- |
+| ↑ / ↓ | Brightness up / down by 5 percentage points |
+| ← / → | Monitor volume down / up by 5 percentage points |
+| M | Monitor mute / unmute |
+| 1 / 2 / 3 | Apply the first / second / third saved preset |
+| R | Restore displays |
+
+Brightness, volume and mute target the **screen under your pointer**. Open the keyboard button in the footer, select an action, click **Record Shortcut**, press your combination, then **Save**. You can also choose keys from the compact menu, reset defaults, or disable everyday shortcuts. Recovery stays independently enabled, with ⌃⌥⌘R retained as a fallback. Volume needs DDC support. No Accessibility or Input Monitoring permission is required. Registered actions pause while the shortcut editor has focus.
+
+Open the sliders button in the footer to save, rename, apply or delete presets. See the [user guide](docs/USER_GUIDE.md#presets) for matching and failure behavior.
+
 ## Recovery shortcut
 
 Press **Control + Option + Command + R**, or click the curved arrow in the footer. Recovery acts on displays and pending changes owned by Display Mini. It does not reset your entire macOS display configuration.
@@ -74,7 +93,7 @@ Keep another visible display available when first testing connection controls. R
 
 ## Validation and limits
 
-Ten automated logic cases cover 77 assertions, including probe validation, report privacy, brightness math, mode selection, and display identity. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
+Nineteen automated logic cases cover 153 assertions, including probe validation, report privacy, brightness math, mode selection, display identity, unplug recovery, mute restore, preset validation and batch completion. Five shortcut scenarios cover saved preferences, failed-edit rollback, dispatch, reset, recovery, and conflicts. Five store scenarios exercise the actual control orchestration with simulated hardware, including canceled writes, recovery reconciliation and shortcut guards. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
 
 DDC discovery inspects up to 64 online displays and matches the control service's EDID against the selected screen. Connections without readable EDID and monitors reporting identical identities may remain unavailable. Slow timing can help delayed replies; it cannot make an incompatible dock forward DDC.
 
