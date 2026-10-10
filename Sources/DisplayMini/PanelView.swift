@@ -14,6 +14,7 @@ enum PanelStyle {
 struct PanelView: View {
     @ObservedObject var store: DisplayStore
     @State private var showPresets = false
+    @State private var showShortcuts = false
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -62,6 +63,9 @@ struct PanelView: View {
                 Button { showPresets.toggle() } label: { Image(systemName: "slider.horizontal.3") }
                     .help("Brightness and volume presets").accessibilityLabel("Presets")
                     .popover(isPresented: $showPresets, arrowEdge: .trailing) { PresetsView(store: store) }
+                Button { showShortcuts.toggle() } label: { Image(systemName: store.shortcutErrors.isEmpty ? "keyboard" : "exclamationmark.triangle") }
+                    .help("Keyboard shortcuts").accessibilityLabel("Keyboard Shortcuts")
+                    .popover(isPresented: $showShortcuts, arrowEdge: .trailing) { ShortcutsView(store: store) }
                 Button { store.restoreDisplays() } label: { Image(systemName: "arrow.uturn.backward") }
                     .help("Restore displays · ⌃⌥⌘R").accessibilityLabel("Restore Displays")
                 Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
@@ -121,14 +125,14 @@ private struct DisplayCard: View {
                     SliderRow(label: "Brightness (\(device.brightnessMethod))", valueText: "\(Int((device.brightness * 100).rounded()))%", icon: "sun.max.fill") {
                         CompactSlider(value: Binding(get: { device.brightness }, set: { store.setBrightness(device, $0) }), accessibilityName: "\(device.name) brightness")
                             .frame(height: 22)
-                            .disabled(busy || (device.reading && !device.nativeBrightness))
+                            .disabled(busy || device.needsControlRead || (device.reading && !device.nativeBrightness))
                     }
                     if !device.builtIn {
                         SliderRow(label: "Volume", valueText: device.volume.map { "\(Int(($0 * 100).rounded()))%" } ?? (device.reading ? "Reading…" : "Unavailable"), icon: "speaker.wave.2.fill") {
                           HStack(spacing: 8) {
                             CompactSlider(value: Binding(get: { device.volume ?? 0 }, set: { store.setVolume(device, $0) }), accessibilityName: "\(device.name) volume")
                                 .frame(height: 22)
-                                .disabled(device.volume == nil || device.reading || busy)
+                                .disabled(device.volume == nil || device.reading || device.needsControlRead || busy)
                             Button { store.toggleMute(device) } label: {
                                 Image(systemName: device.confirmedVolume == 0 ? "speaker.slash.fill" : "speaker.wave.2")
                                     .frame(width: 22, height: 22)
