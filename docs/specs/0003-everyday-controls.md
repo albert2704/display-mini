@@ -15,6 +15,7 @@ Add monitor mute, named brightness/volume presets and global shortcuts to the ex
 * AC-4: Ctrl+Option+Command with Up/Down changes brightness by five percentage points, Left/Right changes monitor volume, M toggles mute, and 1/2/3 applies the corresponding saved preset. Brightness, volume and mute target the screen under the pointer with no fallback to a different screen. Unsupported or busy targets produce visible feedback.
 * AC-5: Everyday shortcuts can be disabled in a settings popover, persisted across launches. Show the mapping and registration conflicts. Ctrl+Option+Command+R remains independently registered for Restore Displays. Validate event signature and ID and clean up Carbon registrations.
 * AC-6: Block conflicting control/configuration edits during preset application. Cancel pending batch work on restore, shutdown, sleep or display topology changes, ignoring stale completions. Restore Displays remains available. Preserve built-in unplug recovery.
+* AC-7: All nine shortcuts have editable key/modifier bindings, per-action defaults and Reset All to Defaults. Persist validated bindings locally. Reject duplicate assignments and reserve Ctrl+Option+Command+R as a recovery fallback even when Restore is customized. Acquire a changed key before releasing the previous registration; a failed edit must preserve the previous preferences and active keys. Unrelated startup conflicts must not prevent editing another action. Preset labels and feedback use current bindings.
 
 ## Feature design
 
@@ -40,10 +41,11 @@ Preset execution reuses the existing debounced write paths with completion callb
 2. Add validated preset models, persistence, cancellation-safe execution and popover, with malformed-data and batch regression tests (AC-2, AC-3, AC-6).
 3. Add Carbon action dispatch, pointer targeting, settings and registration lifecycle checks (AC-4, AC-5).
 4. Build and test, verify the native UI and persistence, update user/developer guides, and publish a reviewed PR. Keep separate working commits.
+5. User follow-up, 2026-10-10: add key/menu modifier editors, schema-1 `shortcutBindings` storage, transactional registration changes and tests with an injected registrar (AC-7). Support letters, digits, arrows, F1–F12, Space, Home/End and Page Up/Down in US physical key positions, requiring Control or Command. Invalid saved data falls back to defaults and is retained until an explicit save/reset creates a backup. Startup and enable toggles register available keys and report individual conflicts. Editing while everyday keys are disabled saves the binding for the next enable. Recovery and its fixed fallback remain independently active.
 
 ## Consequences
 
-Mute controls monitor volume, not macOS output or applications. DDC support remains required for volume. Saved levels may be rounded to the monitor's hardware range. Presets do not connect absent screens. Fixed modifier shortcuts avoid global key interception and Accessibility permission; custom bindings and media keys are deferred.
+Mute controls monitor volume, not macOS output or applications. DDC support remains required for volume. Saved levels may be rounded to the monitor's hardware range. Presets do not connect absent screens. Registered modifier shortcuts avoid global key interception and Accessibility permission. Media-key interception and arbitrary key recording are deferred; custom bindings use a menu and modifier buttons.
 
 ## References
 

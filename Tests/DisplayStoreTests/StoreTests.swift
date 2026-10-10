@@ -37,6 +37,7 @@ enum DDCFailure: LocalizedError { case rejected; var errorDescription: String? {
         await muteRejectsFailedRestore()
         await slowRecoveryWriteReconciles()
         shortcutGuards()
+        ShortcutTests.run()
         print("Passed 5 store orchestration scenarios (sequential apply, canceled write reconciliation, mute rollback, slow recovery, shortcut guards).")
     }
     static let uuid = "00000000-0000-4000-8000-00000000F001"

@@ -34,9 +34,14 @@ import SwiftUI
         }, report: { [weak self] errors in
             self?.store.shortcutErrors = errors
         })
-        shortcuts?.setEverydayEnabled(store.shortcutsEnabled)
+        shortcuts?.configure(store.shortcutPreferences, enabled: store.shortcutsEnabled)
+        store.updateShortcutRegistration = { [weak self] preferences in
+            guard let self, let shortcuts = self.shortcuts else { return "Keyboard shortcuts are not ready yet." }
+            return shortcuts.configure(preferences, enabled: self.store.shortcutsEnabled, atomic: true)
+        }
         shortcutSetting = store.$shortcutsEnabled.dropFirst().sink { [weak self] enabled in
-            self?.shortcuts?.setEverydayEnabled(enabled)
+            guard let self else { return }
+            self.shortcuts?.configure(self.store.shortcutPreferences, enabled: enabled)
         }
         showPanel()
     }
