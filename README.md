@@ -67,7 +67,7 @@ Default bindings (editable from the keyboard button): hold **Control + Option + 
 | 1 / 2 / 3 | Apply the first / second / third saved preset |
 | R | Restore displays |
 
-Brightness, volume and mute target the **screen under your pointer**. Open the keyboard button in the footer to change any key combination, reset defaults, or disable everyday shortcuts. Recovery stays independently enabled, with ⌃⌥⌘R retained as a fallback. Volume needs DDC support. These are registered modifier shortcuts, with no Accessibility or Input Monitoring permission required.
+Brightness, volume and mute target the **screen under your pointer**. Open the keyboard button in the footer, select an action, click **Record Shortcut**, press your combination, then **Save**. You can also choose keys from the compact menu, reset defaults, or disable everyday shortcuts. Recovery stays independently enabled, with ⌃⌥⌘R retained as a fallback. Volume needs DDC support. No Accessibility or Input Monitoring permission is required. Registered actions pause while the shortcut editor has focus.
 
 Open the sliders button in the footer to save, rename, apply or delete presets. See the [user guide](docs/USER_GUIDE.md#presets) for matching and failure behavior.
 

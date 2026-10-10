@@ -8,6 +8,7 @@
 * Named brightness/volume presets with save, rename, apply and delete, matched by display UUID.
 * Global brightness, volume and mute shortcuts targeting the screen under the pointer, plus keys for the first three presets.
 * Editable shortcuts for every action, saved key/modifier bindings, per-action defaults, reset all, and conflict-safe edits.
+* Record shortcut combinations from the keyboard, with Escape/blur cancellation and capture of existing bindings without running display actions.
 * Shortcut enable preference, visible key reference, and per-action registration conflict reporting, with a fixed recovery fallback.
 * Sequential, verified preset application with skipped-control and failure summaries.
 * Preset validation, persistence, completion and real store orchestration regression tests.
