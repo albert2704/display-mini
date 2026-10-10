@@ -183,6 +183,17 @@ import AppKit
         recorder.start(installMonitor: false) { captured.append($0) }
         recorder.endEditing()
         precondition(!recorder.handle(event(kVK_ANSI_K, flags: .command)) && captured.isEmpty)
+        // Exercise actual observer installation/removal without global input or monitor I/O.
+        for notification in [NSApplication.didResignActiveNotification, NSWindow.didResignKeyNotification] {
+            recorder.beginEditing()
+            recorder.start { captured.append($0) }
+            precondition(recorder.isRecording)
+            NotificationCenter.default.post(name: notification, object: nil)
+            precondition(!recorder.isRecording && captured.isEmpty)
+            recorder.endEditing()
+            NotificationCenter.default.post(name: notification, object: nil)
+            precondition(recorder.message == nil)
+        }
     }
 
     static func recordingInterceptsRegisteredHotKeys() {
