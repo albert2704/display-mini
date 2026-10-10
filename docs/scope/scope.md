@@ -36,7 +36,7 @@ Display personalization adds local screen aliases and favorites while reusing th
 - [x] Build names, favorites, persistence and the native settings controls.
 - [x] Run seven new regression scenarios and the existing test suites.
 - [x] Verify native name/star persistence and inspect light/dark layouts; update guides.
-- [ ] Merge the feature PR.
+- [ ] Merge [PR #5](https://github.com/albert2704/display-mini/pull/5).
 
 ## Deferred
 
