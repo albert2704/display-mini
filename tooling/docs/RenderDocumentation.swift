@@ -56,7 +56,7 @@ extension ShortcutRecorder {
         NSApplication.shared.setActivationPolicy(.prohibited)
         defer { DocumentationDefaults.shared.removePersistentDomain(forName: DocumentationDefaults.domain) }
         let output = URL(fileURLWithPath: CommandLine.arguments[1])
-        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared)
+        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared, personalizationDefaults: DocumentationDefaults.shared)
         store.seedDocumentation()
         try render(PanelView(store: store), size: .init(width: 300, height: 412), name: "panel", output: output)
         try render(PresetsView(store: store), size: .init(width: 380, height: 440), name: "presets", output: output)
