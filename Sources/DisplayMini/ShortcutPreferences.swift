@@ -43,6 +43,19 @@ struct ShortcutKey: Identifiable {
         .init(kVK_Space, "Space"), .init(kVK_Home, "Home"), .init(kVK_End, "End"),
         .init(kVK_PageUp, "Page Up"), .init(kVK_PageDown, "Page Down")
     ]
+    struct Group: Identifiable {
+        let title: String
+        let keys: [ShortcutKey]
+        var id: String { title }
+    }
+    static let groups: [Group] = [
+        .init(title: "Arrows", keys: Array(choices[0..<4])),
+        .init(title: "Letters A–M", keys: Array(choices[4..<17])),
+        .init(title: "Letters N–Z", keys: Array(choices[17..<30])),
+        .init(title: "Numbers", keys: Array(choices[30..<40])),
+        .init(title: "Function keys", keys: Array(choices[40..<52])),
+        .init(title: "Navigation", keys: Array(choices[52...]))
+    ]
 }
 
 struct ShortcutBinding: Codable, Hashable {
