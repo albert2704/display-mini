@@ -35,6 +35,11 @@ struct DisplayMode: Identifiable {
     @Published var error: String?
     @Published var ddcProbe: DDCProbe?
     @Published var ddcFailure: DDCFailure?
+    @Published var advancedProbe: AdvancedDDCProbe?
+    @Published var advancedBusy = false
+    @Published var contrast: Double?
+    @Published var advancedMessage: String?
+    var advancedRevision = 0
     @Published var lastDDCCheck: Date?
     @Published var ddcTiming: DDCTiming
     @Published var modes: [DisplayMode] = []
@@ -99,6 +104,10 @@ struct DisplayMode: Identifiable {
     @Published private(set) var personalizationStorageError: String?
     @Published var personalizationMessage: String?
     private let personalizationDefaults: UserDefaults
+    private let advancedDefaults: UserDefaults
+    @Published var linkedBrightnessEnabled = false {
+        didSet { advancedDefaults.set(linkedBrightnessEnabled, forKey: "linkedBrightnessEnabled") }
+    }
     private var presetProgress: PresetProgress?
     private var presetSteps: [PresetPlan.Step] = []
     private var presetSkipped = 0
@@ -106,7 +115,7 @@ struct DisplayMode: Identifiable {
     var controlsBusy: Bool { connectionBusy || pendingResolutionName != nil || applyingPresetName != nil }
     var canSavePreset: Bool {
         presetStorageError == nil && !controlsBusy && !sleeping && activeCount > 0 && displays.filter(\.connected).allSatisfy {
-            !$0.reading && !$0.writing && !$0.needsControlRead && $0.pendingBrightness == nil && $0.pendingVolume == nil
+            !$0.reading && !$0.writing && !$0.advancedBusy && !$0.needsControlRead && $0.pendingBrightness == nil && $0.pendingVolume == nil
         }
     }
     let native = NativeDisplays()
@@ -131,9 +140,11 @@ struct DisplayMode: Identifiable {
     }
     var activeCount: Int { displays.filter(\.connected).count }
 
-    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard, personalizationDefaults: UserDefaults = .standard) {
+    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard, personalizationDefaults: UserDefaults = .standard, advancedDefaults: UserDefaults = .standard) {
         self.shortcutDefaults = shortcutDefaults
         self.personalizationDefaults = personalizationDefaults
+        self.advancedDefaults = advancedDefaults
+        self.linkedBrightnessEnabled = advancedDefaults.bool(forKey: "linkedBrightnessEnabled")
         if let data = personalizationDefaults.data(forKey: "displayPersonalization") {
             do { personalization = try DisplayPersonalization.decode(data) }
             catch { personalizationStorageError = error.localizedDescription }
@@ -189,13 +200,14 @@ struct DisplayMode: Identifiable {
             // disconnected row when it was a real screen seen by this app.
             guard CGDisplayIsOnline(displayID) != 0 || existing != nil || ownedDisconnects.contains(uuid) else { continue }
             let device = existing ?? DisplayDevice(id: uuid, displayID: displayID, name: builtIn ? "Built-in Display" : "External Display", builtIn: builtIn)
+            invalidateAdvancedControls(device)
             device.displayID = displayID
             if let screen = screen(for: device) { device.systemName = builtIn ? "Built-in Display" : screen.localizedName }
             device.name = personalization.entry(for: uuid).name ?? device.systemName
             device.connected = CGDisplayIsOnline(displayID) != 0
             if device.connected {
                 loadModes(device)
-                if !device.reading && !device.writing && device.pendingBrightness == nil && device.pendingVolume == nil {
+                if !device.reading && !device.writing && !device.advancedBusy && device.pendingBrightness == nil && device.pendingVolume == nil {
                     readControls(device)
                 }
                 if CGDisplayIsActive(displayID) != 0 {
@@ -210,6 +222,7 @@ struct DisplayMode: Identifiable {
         }
         // Preserve a recovery row if an OS version omits a disabled display from its private list.
         for missing in displays where !result.contains(where: { $0.id == missing.id }) {
+            invalidateAdvancedControls(missing)
             missing.revision += 1
             missing.pendingBrightness?.cancel(); missing.pendingBrightness = nil
             missing.pendingVolume?.cancel(); missing.pendingVolume = nil
@@ -452,7 +465,7 @@ struct DisplayMode: Identifiable {
 
     private func reconcileControlsIfNeeded(_ device: DisplayDevice) {
         guard device.needsControlRead, device.connected, !shuttingDown, !sleeping,
-              !device.reading, !device.writing, device.pendingBrightness == nil, device.pendingVolume == nil else { return }
+              !device.reading, !device.writing, !device.advancedBusy, device.pendingBrightness == nil, device.pendingVolume == nil else { return }
         readControls(device)
     }
 
@@ -461,8 +474,15 @@ struct DisplayMode: Identifiable {
     }
 
     func setBrightness(_ device: DisplayDevice, _ value: Double) {
-        guard !controlsBusy, !sleeping, !device.needsControlRead else { return }
+        guard !controlsBusy, !sleeping, !shuttingDown, device.connected, !device.needsControlRead,
+              !device.advancedBusy, displays.contains(where: { $0 === device }) else { return }
         writeBrightness(device, value)
+        if linkedBrightnessEnabled {
+            let others = displays.filter { $0 !== device && $0.connected }
+            let ready = others.filter { !$0.reading && !$0.needsControlRead && !$0.advancedBusy }
+            for other in ready { writeBrightness(other, value) }
+            if ready.count != others.count { message = "Linked brightness skipped \(others.count - ready.count) busy display(s). Try again when their controls are ready." }
+        }
     }
 
     private func writeBrightness(_ device: DisplayDevice, _ value: Double, completion: @escaping (Bool) -> Void = { _ in }) {
@@ -515,7 +535,7 @@ struct DisplayMode: Identifiable {
     }
 
     func setVolume(_ device: DisplayDevice, _ value: Double) {
-        guard !controlsBusy, !sleeping, !device.needsControlRead else { return }
+        guard !controlsBusy, !sleeping, !device.needsControlRead, !device.advancedBusy else { return }
         writeVolume(device, value)
     }
 
@@ -680,6 +700,7 @@ struct DisplayMode: Identifiable {
 
     func setSoftwareOnly(_ device: DisplayDevice, _ value: Bool) {
         guard canConfigureDDC(device) else { return }
+        invalidateAdvancedControls(device)
         device.revision += 1; device.brightnessRevision += 1
         device.pendingBrightness?.cancel(); device.pendingBrightness = nil
         device.forceSoftware = value
@@ -689,21 +710,126 @@ struct DisplayMode: Identifiable {
     }
 
     func canConfigureDDC(_ device: DisplayDevice) -> Bool {
-        device.connected && !device.reading && !device.writing && !device.needsControlRead && device.pendingBrightness == nil &&
-        device.pendingVolume == nil && !controlsBusy && !sleeping
+        device.connected && !device.reading && !device.writing && !device.advancedBusy && !device.needsControlRead && device.pendingBrightness == nil &&
+        device.pendingVolume == nil && !controlsBusy && !sleeping && !shuttingDown && displays.contains(where: { $0 === device })
     }
 
     func retryDDC(_ device: DisplayDevice) {
         guard canConfigureDDC(device) else { return }
+        invalidateAdvancedControls(device)
         device.error = nil; readControls(device)
     }
 
     func setDDCTiming(_ device: DisplayDevice, _ timing: DDCTiming) {
         guard canConfigureDDC(device), timing != device.ddcTiming else { return }
+        invalidateAdvancedControls(device)
         device.ddcTiming = timing
         UserDefaults.standard.set(timing.rawValue, forKey: "ddcTiming.\(device.id)")
         device.revision += 1
         readControls(device)
+    }
+
+    private func invalidateAdvancedControls(_ device: DisplayDevice) {
+        device.advancedRevision += 1
+        device.advancedProbe = nil; device.contrast = nil
+        device.advancedMessage = device.advancedBusy ? "The display changed during this operation. Detect controls again to read its current settings." : nil
+    }
+
+    private func acceptsAdvancedResult(_ device: DisplayDevice, revision: Int) -> Bool {
+        !shuttingDown && !sleeping && device.connected && device.advancedRevision == revision && displays.contains { $0 === device }
+    }
+
+    func detectAdvancedControls(_ device: DisplayDevice) {
+        guard !device.builtIn, canConfigureDDC(device), UUID(uuidString: device.id) != nil else { return }
+        invalidateAdvancedControls(device)
+        let revision = device.advancedRevision
+        device.advancedBusy = true
+        ddc.readAdvanced(uuid: device.id, timing: device.ddcTiming) { [weak self, weak device] result in
+            guard let self, let device else { return }
+            device.advancedBusy = false
+            defer { self.reconcileControlsIfNeeded(device) }
+            guard self.acceptsAdvancedResult(device, revision: revision) else { return }
+            switch result {
+            case .success(let probe):
+                device.advancedProbe = probe; device.contrast = probe.contrast.fraction
+            case .failure(let failure): device.advancedMessage = failure.localizedDescription
+            }
+        }
+    }
+
+    func setContrast(_ device: DisplayDevice, _ value: Double) {
+        guard !device.builtIn, value.isFinite, canConfigureDDC(device),
+              let confirmed = device.contrast, let probe = device.advancedProbe,
+              probe.contrast.fraction != nil, let maximum = probe.contrast.maximum else { return }
+        let requested = ControlMath.clamp(value)
+        let raw = ControlMath.rawValue(fraction: requested, maximum: maximum)
+        guard raw != ControlMath.rawValue(fraction: confirmed, maximum: maximum) else { return }
+        device.advancedRevision += 1
+        let revision = device.advancedRevision
+        device.contrast = Double(raw) / Double(maximum)
+        device.advancedBusy = true; device.writesInFlight += 1; device.advancedMessage = nil
+        ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "contrast", value: raw) { [weak self, weak device] result in
+            guard let self, let device else { return }
+            device.advancedBusy = false; device.writesInFlight = max(0, device.writesInFlight - 1)
+            defer { self.reconcileControlsIfNeeded(device) }
+            guard self.acceptsAdvancedResult(device, revision: revision) else { return }
+            if case .failure(let failure) = result {
+                device.contrast = confirmed
+                device.advancedMessage = "\(failure.localizedDescription) Detect controls again if the monitor changed anyway."
+            }
+        }
+    }
+
+    var inputSwitchNeedsBuiltInRestore: Bool {
+        displays.contains { $0.builtIn && !$0.connected && ownedDisconnects.contains($0.id) }
+    }
+
+    func switchInput(_ device: DisplayDevice, to input: MonitorInput) {
+        guard !device.builtIn, canConfigureDDC(device), let current = device.advancedProbe?.currentInput,
+              current != input.rawValue else { return }
+        guard !inputSwitchNeedsBuiltInRestore else {
+            device.advancedMessage = "Reconnect the built-in display with Restore Displays before switching input."
+            return
+        }
+        device.advancedRevision += 1
+        let revision = device.advancedRevision
+        device.advancedBusy = true; device.writesInFlight += 1; device.advancedMessage = nil
+        ddc.sendInput(uuid: device.id, timing: device.ddcTiming, input: input) { [weak self, weak device] result in
+            guard let self, let device else { return }
+            device.advancedBusy = false; device.writesInFlight = max(0, device.writesInFlight - 1)
+            defer { self.reconcileControlsIfNeeded(device) }
+            guard self.acceptsAdvancedResult(device, revision: revision) else { return }
+            device.advancedProbe = nil; device.contrast = nil
+            switch result {
+            case .success:
+                device.advancedMessage = "Sent \(input.title). The monitor may now be on another source; this cannot be confirmed. Use its buttons to return to the Mac."
+            case .failure(let failure):
+                device.advancedMessage = "\(failure.localizedDescription) The input may still have changed. Use the monitor’s buttons to return, then detect again."
+            }
+            self.message = device.advancedMessage
+        }
+    }
+
+    func refreshRateModes(_ device: DisplayDevice) -> [FavoriteResolution] {
+        guard device.connected, let current = device.currentMode?.favorite else { return [] }
+        return RefreshRateSelection.options(device.modes.compactMap(\.favorite), current: current)
+    }
+
+    func changeRefreshRate(_ device: DisplayDevice, to selection: FavoriteResolution) {
+        guard !controlsBusy, !sleeping, !device.advancedBusy, device.connected,
+              displays.contains(where: { $0 === device }), let currentID = native.currentID(for: device.id),
+              currentID == device.displayID, let current = CGDisplayCopyDisplayMode(currentID),
+              let currentDescriptor = DisplayMode(native: current).favorite else { return }
+        guard selection.hasSameGeometry(as: currentDescriptor) else {
+            message = "The resolution changed. Choose a refresh rate for its new size."; return
+        }
+        guard selection != currentDescriptor else { return }
+        let modes = CGDisplayCopyAllDisplayModes(currentID, [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary) as? [CGDisplayMode] ?? []
+        guard let mode = modes.filter({ $0.isUsableForDesktopGUI() }).map({ DisplayMode(native: $0) }).first(where: { $0.favorite == selection }) else {
+            message = "This refresh rate is no longer available. Refresh displays and try again."; return
+        }
+        device.currentModeID = current.ioDisplayModeID
+        changeResolution(device, mode: mode)
     }
 
     func diagnosticReport(for device: DisplayDevice) -> String {
@@ -717,6 +843,9 @@ struct DisplayMode: Identifiable {
                      "Timing profile: \(device.ddcTiming.title)"]
         if let date = device.lastDDCCheck { lines.append("Last check: \(ISO8601DateFormatter().string(from: date))") }
         if let probe = device.ddcProbe { lines += probe.diagnosticLines }
+        if let probe = device.advancedProbe {
+            lines += ["Contrast: \(probe.contrast.summary)", "Input: \(probe.input.status.title)"]
+        }
         if let failure = device.ddcFailure { lines.append("Check failed: \(failure.localizedDescription)") }
         if device.lastDDCCheck == nil { lines.append("DDC has not been checked yet.") }
         lines.append("Serial numbers, UUIDs, display names and local paths are omitted. No data was uploaded.")
@@ -724,9 +853,10 @@ struct DisplayMode: Identifiable {
     }
 
     func toggleConnection(_ device: DisplayDevice, enabled: Bool) {
-        guard !controlsBusy, !sleeping else { return }
+        guard !controlsBusy, !sleeping, !device.advancedBusy else { return }
         guard ControlMath.mayDisconnect(isEnabled: !enabled, activeCount: activeCount, pending: connectionBusy) else { device.error = "Keep at least one display connected."; return }
         device.error = nil; connectionBusy = true
+        invalidateAdvancedControls(device)
         connectionRevision += 1
         let operation = connectionRevision
         device.revision += 1; device.brightnessRevision += 1; device.volumeRevision += 1
@@ -760,7 +890,7 @@ struct DisplayMode: Identifiable {
     }
 
     func changeResolution(_ device: DisplayDevice, mode: DisplayMode) {
-        guard !controlsBusy, !sleeping, device.connected,
+        guard !controlsBusy, !sleeping, !device.advancedBusy, device.connected,
               mode.id != device.currentModeID, let original = CGDisplayCopyDisplayMode(device.displayID) else { return }
         guard UserDefaults.standard.dictionary(forKey: "resolutionRecovery") == nil else {
             unresolvedRecovery = true
@@ -859,6 +989,7 @@ struct DisplayMode: Identifiable {
         }
         presetProgress = nil; presetSteps = []; applyingPresetName = nil
         for device in displays {
+            invalidateAdvancedControls(device)
             device.needsControlRead = true
             device.revision += 1; device.brightnessRevision += 1; device.volumeRevision += 1
             device.pendingBrightness?.cancel(); device.pendingBrightness = nil

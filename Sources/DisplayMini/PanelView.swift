@@ -11,12 +11,19 @@ enum PanelStyle {
     static let heading = Font.system(size: 13, weight: .semibold)
 }
 
+enum PanelTab: String, CaseIterable { case displays = "Displays", advanced = "Advanced" }
+
 struct PanelView: View {
     @ObservedObject var store: DisplayStore
     @State private var showPresets = false
     @State private var showShortcuts = false
+    @State private var tab = PanelTab.displays
     var body: some View {
         VStack(spacing: 0) {
+            Picker("Display controls", selection: $tab) {
+                ForEach(PanelTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).labelsHidden().padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
+                .accessibilityLabel("Display controls tab")
             ScrollView {
                 VStack(spacing: PanelStyle.gap) {
                     if store.displays.isEmpty {
@@ -27,7 +34,8 @@ struct PanelView: View {
                             Button("Refresh Displays") { store.refresh() }
                         }.padding(24)
                     }
-                    ForEach(store.displays) { device in DisplayCard(device: device, store: store) }
+                    if tab == .advanced { AdvancedView(store: store) }
+                    else { ForEach(store.displays) { device in DisplayCard(device: device, store: store) } }
                 }.padding(8)
             }.scrollIndicators(.hidden)
             if let name = store.pendingResolutionName {
@@ -81,8 +89,11 @@ struct PanelView: View {
         .tint(PanelStyle.accent)
     }
     private var panelHeight: CGFloat {
+        if tab == .advanced {
+            return min(730, 630 + (store.pendingResolutionName == nil ? 0 : 108) + (store.message == nil ? 0 : 65))
+        }
         let cards = store.displays.reduce(CGFloat(0)) { $0 + ($1.connected ? ($1.builtIn ? 139 : 211) : 78) + ($1.error == nil ? 0 : 50) }
-        return min(730, max(180, cards + CGFloat(max(0, store.displays.count - 1)) * PanelStyle.gap + 52)
+        return min(730, max(180, cards + CGFloat(max(0, store.displays.count - 1)) * PanelStyle.gap + 90)
                    + (store.pendingResolutionName == nil ? 0 : 108) + (store.message == nil ? 0 : 65)
                    + (store.applyingPresetName == nil ? 0 : 40))
     }
@@ -93,7 +104,7 @@ private struct DisplayCard: View {
     @ObservedObject var store: DisplayStore
     @State private var showDDC = false
     @State private var showSettings = false
-    private var busy: Bool { store.controlsBusy }
+    private var busy: Bool { store.controlsBusy || device.advancedBusy }
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 7) {

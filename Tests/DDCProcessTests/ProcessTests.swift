@@ -2,7 +2,7 @@ import Foundation
 import DisplayCore
 
 @main struct ProcessTests {
-    static func main() throws {
+    @MainActor static func main() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -32,6 +32,35 @@ import DisplayCore
         let inheritedStart = Date()
         if case .failure(.timedOut) = DDCCommandRunner(helper: inherited, timeout: 0.1).run([]) {} else { preconditionFailure("Inherited pipe was not bounded") }
         precondition(Date().timeIntervalSince(inheritedStart) < 0.8)
+        let commandLog = root.appendingPathComponent("commands").path
+        let routed = try helper("routed", """
+        printf '%s:%s\\n' "$5" "$6" >> '\(commandLog)'
+        case "$5:$6" in
+          set:input) printf 'Writing 15\\n' ;;
+          get:input) exit 9 ;;
+          set:contrast) printf 'Writing 80\\n' ;;
+          get:contrast) printf '80\\n' ;;
+          set:volume) printf 'Writing 30\\n' ;;
+          get:volume) printf '29\\n' ;;
+          *) exit 8 ;;
+        esac
+        """)
+        let client = DDCClient(helper: routed)
+        let inputResult: Result<Void, DDCFailure> = await withCheckedContinuation { continuation in
+            client.sendInput(uuid: "00000000-0000-4000-8000-00000000A001", timing: .standard, input: .displayPort1) { continuation.resume(returning: $0) }
+        }
+        try inputResult.get()
+        let contrastResult: Result<Void, DDCFailure> = await withCheckedContinuation { continuation in
+            client.write(uuid: "00000000-0000-4000-8000-00000000A001", timing: .standard, attribute: "contrast", value: 80) { continuation.resume(returning: $0) }
+        }
+        try contrastResult.get()
+        let mismatch: Result<Void, DDCFailure> = await withCheckedContinuation { continuation in
+            client.write(uuid: "00000000-0000-4000-8000-00000000A001", timing: .standard, attribute: "volume", value: 30) { continuation.resume(returning: $0) }
+        }
+        if case .failure(.unconfirmedWrite) = mismatch {} else { preconditionFailure("Mismatched readback accepted") }
+        let commands = try String(contentsOfFile: commandLog, encoding: .utf8)
+        precondition(commands == "set:input\nset:contrast\nget:contrast\nset:volume\nget:volume\n")
         print("Passed 6 helper process scenarios (success, missing, rejection, excessive output, timeout, inherited pipe).")
+        print("Passed input delivery without readback, verified contrast, and mismatched readback checks.")
     }
 }
