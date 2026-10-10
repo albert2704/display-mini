@@ -73,6 +73,45 @@ Built in and Apple displays use DisplayServices, with native brightness clamped 
 
 Writes are briefly debounced to avoid flooding the monitor while dragging. DDC writes are read back before being considered confirmed. A rejected or unconfirmed change displays an error.
 
+## Advanced tab
+
+Choose **Advanced** at the top of the menu bar panel. **Displays** returns to the usual sliders. Recovery, messages and any Keep/Revert countdown remain visible on both tabs.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="media/advanced-dark.png">
+  <img src="media/advanced.png" width="300" alt="Advanced display controls with linked brightness, refresh rate, contrast and input source">
+</picture>
+
+### Linked brightness
+
+Turn on **Link brightness** to apply subsequent brightness slider or shortcut edits in Display Mini to all ready connected screens. Enabling it does not immediately change any screen. The preference survives relaunch and starts off by default.
+
+Each screen receives the same app percentage, using its own hardware or software brightness method. Matching percentages is not a calibrated match in physical luminance. Screens that are detecting controls or running an advanced operation are skipped with a message. Changes made through macOS, another app or monitor buttons are not watched. Presets and recovery retain their independent behavior.
+
+### Refresh rate
+
+The rate menu lists only macOS modes with the same current logical size and exact pixel dimensions. It preserves fractional rates such as 59.94 Hz and labels system controlled or variable timing as **Variable / system**. A single available rate is shown with a disabled menu.
+
+Selecting another rate uses the same **Keep** and **Revert** preview as resolution changes. The app resolves the mode again before applying, and rejects a selection if the resolution changed in the meantime.
+
+### Monitor contrast
+
+For an external screen, click **Detect**. This reads contrast and input separately without sending any setting changes. It does not add extra queries to normal brightness/volume detection.
+
+When the monitor reports a valid contrast range, its slider appears. Release it to write the new hardware contrast, or use the keyboard. The percentage scales to the monitor's reported maximum. Display Mini reads the result back before confirming it and restores the prior displayed value on failure. A monitor may lock contrast in HDR or certain picture modes. Use **Check Again** after changing a monitor setting.
+
+### Input source
+
+When the monitor identifies its current input through standard DDC, choose a common input and click **Switch…**. Review the confirmation before **Switch Input**. The choices are common VGA, DVI, DisplayPort and HDMI codes, not ports discovered on your specific monitor. USB-C and vendor specific input mappings are not included in this version.
+
+The monitor may stop showing the Mac or stop answering DDC after switching. A successful command reports **Sent**, not a confirmed visible input. There is no automatic retry or rollback. Use the monitor's own buttons to return to the Mac, then **Detect** again. A failed command may still have reached the monitor.
+
+If Display Mini disconnected your built-in screen, reconnect it with **Restore Displays** before switching input. A reply with input code zero does not identify a source, so switching stays unavailable while other working controls remain enabled. The LG IPS QHD connection tested during development returned this result; some monitors need vendor specific commands.
+
+### Availability and diagnostics
+
+Disconnected screens show reconnect guidance. Invalid replies and unsupported controls cannot enable writes. Try DDC/CI in the monitor menu, **Slow** timing under **Monitor Controls**, or a direct cable. Refresh, reconnect, timing changes, sleep or recovery invalidate advanced readings; click **Detect** again when ready. Contrast and input status are also included in the existing copied connection report, without display identifiers.
+
 ## External monitor volume
 
 Volume controls the monitor's speakers through DDC VCP code `0x62`. It does not set Mac speaker volume or change the selected macOS audio output.

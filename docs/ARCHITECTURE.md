@@ -26,6 +26,8 @@ No server, network request, account, or external runtime is involved. The app is
 | `Sources/DisplayMini/AppMain.swift` | App lifecycle, status item, popover, duplicate instance handling, shortcut dispatch and preference subscription. |
 | `Sources/DisplayMini/PanelView.swift` | Display cards, control bindings, DDC settings, resolution confirmation, footer. |
 | `Sources/DisplayMini/DisplaySettingsView.swift` | Custom screen name editor and available/saved resolution stars. |
+| `Sources/DisplayMini/AdvancedView.swift` | Linked brightness, refresh menus, contrast and confirmed input actions. |
+| `Sources/DisplayCore/AdvancedControls.swift` | Advanced probe validation, common input codes and exact refresh geometry selection. |
 | `Sources/DisplayCore/DisplayPersonalization.swift` | Validated names and favorite descriptors, schema and storage limits. |
 | `Sources/DisplayMini/ShortcutPreferences.swift` | Validated bindings, supported physical keys, modifier mapping and defaults. |
 | `Sources/DisplayMini/ShortcutController.swift` | Carbon registration lifecycle, validated hotkey IDs, per-action conflict reports. |
@@ -73,6 +75,16 @@ Slider work is debounced by 120 ms. Separate brightness and volume revisions pre
 Detection uses one schema-versioned JSON `probe` process for both controls, taking current and maximum from the same reply. The app validates the returned UUID, timing, route consistency, attempts and numeric range before accepting it. Unsupported VCP responses are distinguished from invalid replies, I/O failures and unavailable routes. Standard waits 50 ms before reading; Slow waits 150 ms. The selected profile also applies to write confirmation.
 
 Subprocess output is read through a nonblocking pipe and limited to 64 KiB. A deadline covers process execution and EOF collection, including a child retaining an inherited descriptor. There is no detached blocking reader. Diagnostic reports are assembled from explicitly allowed fields, never raw helper output or identity metadata.
+
+## Advanced controls
+
+`PanelView` switches between Displays and Advanced while keeping recovery, messages and mode confirmation outside the scroll area. `linkedBrightnessEnabled` is a local boolean, off by default. Public `setBrightness` fans manual edits out to ready connected devices; the private write path used by presets and recovery does not. Each device retains its own write revision, method and failure handling. The setting is not an observer of macOS or other apps' changes.
+
+`probe-advanced` reads contrast (`0x12`) and input (`0x60`) independently without expanding the normal two-control probe. Its schema validates UUID, timing, transport, attempt counts and ranges. Contrast requires a positive maximum; input is noncontinuous and allows maximum zero. Current input zero does not identify a source and never enables switching. DDCClient keeps all operations on its existing serial queue with the same subprocess bounds.
+
+The store checks device membership, capability, connection, busy state and a separate advanced revision before accepting results. Refresh, sleep, recovery and configuration changes invalidate cached advanced readings. Contrast sends on slider commit, verifies readback and rolls the displayed value back after a failed write. Input sends only after the UI confirmation, uses a fixed common-code allowlist, and deliberately reports command delivery rather than verification because changing inputs may sever DDC. It clears cached state after either outcome. A built-in screen disabled by the app must be restored first.
+
+Refresh choices use FavoriteResolution descriptors without saving favorites. Exact logical and pixel dimensions stay fixed; millihertz identity deduplicates equivalent rates. Selection resolves fresh display identity and mode geometry before calling the existing resolution transaction and Keep/Revert UI.
 
 ## Everyday controls
 

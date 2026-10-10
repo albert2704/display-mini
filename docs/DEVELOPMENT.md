@@ -57,6 +57,8 @@ The fixtures use synthetic serial numbers. The tests do not call macOS configura
 
 Four additional model scenarios cover personalization names, separate screen identities, resolution variants, malformed documents and count limits. Three store scenarios cover persisted names, rejection/removal of unavailable favorites, and isolated backup/reset. Direct Swift build scripts use whole module compilation so multiple DisplayCore source files produce one linked object.
 
+Advanced controls add three model scenarios for probes, input codes and exact refresh geometry; five store scenarios for contrast rollback, input delivery/recovery guards, stale operations, linked edits/persistence and preset isolation; and real DDCClient subprocess fixtures proving that input sends do not attempt readback while contrast does. A zero current input must not enable switching or suppress valid contrast support.
+
 ## Manual hardware validation
 
 For an explicitly authorized read-only hardware check, the bundled helper accepts `--delay-ms 50 display <UUID> probe` (or 150 for Slow). It returns schema 1 JSON. This internal output includes the requested UUID; use the app's **Copy Report** for public issue reports. Detection sends Get VCP requests and never Set VCP commands.
@@ -76,6 +78,12 @@ Perform these checks only on a setup where display changes are authorized and an
 | Keyboard recording | Record a combination, review and Save; reject duplicate/reserved keys; Escape, Stop, app/window blur and editor closure stop listening; existing registered keys do not run actions in the foreground editor. |
 | Display personalization | Rename a screen, refresh/relaunch, restore its system name; star/unstar a mode and confirm menu placement and persistence without changing the mode. |
 | Favorite resolution | Select a different favorite and check Keep/Revert. Reconnect with changed availability and ensure missing favorites cannot apply or route to another screen. |
+| Advanced navigation | Both tabs remain accessible; recovery and Keep/Revert stay visible. Inspect light and dark layouts and scrolling. |
+| Advanced detection | Detect performs only reads, contrast/input report independently, input zero leaves switching unavailable. |
+| Contrast | Release the slider, verify the actual monitor change and readback; a failed write restores the displayed value. |
+| Input | Confirm only on an authorized test setup, check physical source change and return using monitor buttons. Cancel must issue no command; sent does not mean confirmed. |
+| Linked brightness | Toggle alone changes no levels. Slider/shortcut edits affect ready screens, while presets retain independent levels. Relaunch preserves the toggle. |
+| Refresh rate | List only the current geometry; select another rate, verify Keep/Revert and no size or density change. |
 | Response timing | Switching Standard/Slow changes the reported wait to 50/150 ms and starts read-only detection. |
 | Diagnostics | Brightness and volume show separate results, attempts, ranges and the last check time. |
 | Copy Report | Copies safe diagnostic fields without UUID, serial, display name or registry/local path. |
