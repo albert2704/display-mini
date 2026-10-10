@@ -65,11 +65,13 @@ enum DisplayShortcut: UInt32, CaseIterable {
     private var currentPreferences: ShortcutPreferences?
     private let perform: (DisplayShortcut) -> Void
     private let report: ([String]) -> Void
+    private let intercept: (ShortcutBinding) -> Bool
 
     init(registrar: HotKeyRegistering? = nil, installHandler: Bool = true,
-         perform: @escaping (DisplayShortcut) -> Void, report: @escaping ([String]) -> Void) {
+         perform: @escaping (DisplayShortcut) -> Void, report: @escaping ([String]) -> Void,
+         intercept: @escaping (ShortcutBinding) -> Bool = { _ in false }) {
         self.registrar = registrar ?? CarbonHotKeyRegistrar()
-        self.perform = perform; self.report = report
+        self.perform = perform; self.report = report; self.intercept = intercept
         guard installHandler else { handlerAvailable = true; return }
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let context = Unmanaged.passUnretained(self).toOpaque()
@@ -124,8 +126,9 @@ enum DisplayShortcut: UInt32, CaseIterable {
     }
 
     func handleEvent(signature: OSType, id: UInt32) {
-        guard signature == Self.signature, let registration = registrations.values.first(where: { $0.id == id }) else { return }
-        perform(registration.action)
+        guard signature == Self.signature, let entry = registrations.first(where: { $0.value.id == id }) else { return }
+        guard !intercept(entry.key) else { return }
+        perform(entry.value.action)
     }
 
     func shutdown() {

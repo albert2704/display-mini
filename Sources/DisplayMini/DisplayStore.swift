@@ -87,6 +87,7 @@ struct DisplayMode: Identifiable {
     @Published private(set) var shortcutPreferences = ShortcutPreferences()
     @Published private(set) var shortcutStorageMessage: String?
     @Published var shortcutEditMessage: String?
+    let shortcutRecorder = ShortcutRecorder()
     var updateShortcutRegistration: ((ShortcutPreferences) -> String?)?
     private let shortcutDefaults: UserDefaults
     private var presetProgress: PresetProgress?
