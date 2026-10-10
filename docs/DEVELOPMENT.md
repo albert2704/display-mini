@@ -55,6 +55,8 @@ The fixtures use synthetic serial numbers. The tests do not call macOS configura
 
 `Tests/DisplayStoreTests` compiles the production store against native/DDC substitutes. It drives real debounce and completion paths without monitor I/O: sequential preset writes, partial failure, canceled late replies, reconciliation before saving, mute rollback, recovery writes, and shortcut guards. Nine additional shortcut scenarios cover validation, failed-edit rollback, reset/recovery/event dispatch, independent conflicts, persistence, keyboard recording, invalid input and cancel, foreground/editor scope, and capturing registered keys without display actions. Tests inject a registrar, isolated UserDefaults and synthetic AppKit events; the lifecycle scenario also installs a local monitor and posts blur notifications to check cleanup. They do not register global hotkeys. `DisplayStore(startMonitoring: false)` skips automatic OS observation/recovery during this fixture setup.
 
+Four additional model scenarios cover personalization names, separate screen identities, resolution variants, malformed documents and count limits. Three store scenarios cover persisted names, rejection/removal of unavailable favorites, and isolated backup/reset. Direct Swift build scripts use whole module compilation so multiple DisplayCore source files produce one linked object.
+
 ## Manual hardware validation
 
 For an explicitly authorized read-only hardware check, the bundled helper accepts `--delay-ms 50 display <UUID> probe` (or 150 for Slow). It returns schema 1 JSON. This internal output includes the requested UUID; use the app's **Copy Report** for public issue reports. Detection sends Get VCP requests and never Set VCP commands.
@@ -72,6 +74,8 @@ Perform these checks only on a setup where display changes are authorized and an
 | Preset interruption | Restore/sleep/hotplug stops remaining steps; controls reconcile after a late write. |
 | Everyday shortcuts | Pointer-targeted actions, first three preset slots, enable switch, change/reset keys and conflicts; custom recovery and the fixed fallback work when everyday keys are off. |
 | Keyboard recording | Record a combination, review and Save; reject duplicate/reserved keys; Escape, Stop, app/window blur and editor closure stop listening; existing registered keys do not run actions in the foreground editor. |
+| Display personalization | Rename a screen, refresh/relaunch, restore its system name; star/unstar a mode and confirm menu placement and persistence without changing the mode. |
+| Favorite resolution | Select a different favorite and check Keep/Revert. Reconnect with changed availability and ensure missing favorites cannot apply or route to another screen. |
 | Response timing | Switching Standard/Slow changes the reported wait to 50/150 ms and starts read-only detection. |
 | Diagnostics | Brightness and volume show separate results, attempts, ranges and the last check time. |
 | Copy Report | Copies safe diagnostic fields without UUID, serial, display name or registry/local path. |

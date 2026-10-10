@@ -92,6 +92,7 @@ private struct DisplayCard: View {
     @ObservedObject var device: DisplayDevice
     @ObservedObject var store: DisplayStore
     @State private var showDDC = false
+    @State private var showSettings = false
     private var busy: Bool { store.controlsBusy }
     var body: some View {
         VStack(spacing: 0) {
@@ -100,6 +101,10 @@ private struct DisplayCard: View {
                     .accessibilityHidden(true)
                 Text(device.name).font(PanelStyle.heading).lineLimit(1).help(device.name)
                 Spacer(minLength: 2)
+                Button { showSettings.toggle() } label: { Image(systemName: "gearshape").font(.system(size: 11)) }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help("Screen name and favorite resolutions").accessibilityLabel("Settings for \(device.name)")
+                    .popover(isPresented: $showSettings, arrowEdge: .trailing) { DisplaySettingsView(device: device, store: store) }
                 Toggle("Connect \(device.name)", isOn: Binding(get: { device.connected }, set: { store.toggleConnection(device, enabled: $0) }))
                     .labelsHidden().toggleStyle(.switch).controlSize(.mini)
                     .disabled(!store.native.canConnect || !ControlMath.mayDisconnect(isEnabled: device.connected, activeCount: store.activeCount, pending: busy))
@@ -149,6 +154,20 @@ private struct DisplayCard: View {
                             Text("Resolution").font(PanelStyle.label).foregroundStyle(.secondary)
                             Spacer()
                             Menu {
+                                let favorites = store.favoriteModes(device)
+                                if !favorites.isEmpty {
+                                    Section("Favorites") {
+                                        ForEach(favorites) { mode in
+                                            Button {
+                                                if let favorite = mode.favorite { store.applyFavorite(device, favorite: favorite) }
+                                            } label: {
+                                                Label("\(mode.size) · \(mode.favorite?.detail ?? mode.detail)",
+                                                      systemImage: mode.favorite == device.currentMode?.favorite ? "checkmark" : "star.fill")
+                                            }
+                                        }
+                                    }
+                                    Divider()
+                                }
                                 ForEach(device.modes) { mode in
                                     Button {
                                         store.changeResolution(device, mode: mode)

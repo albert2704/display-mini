@@ -9,7 +9,7 @@ build.mkdir(parents=True, exist_ok=True)
 source = root / 'Sources/DisplayMini'
 stubs = (root / 'Tests/DisplayStoreTests/StoreTests.swift').read_text().split('@main struct StoreTests')[0]
 files = ['DisplayStore.swift', 'ShortcutController.swift', 'ShortcutPreferences.swift',
-         'ShortcutRecorder.swift', 'CompactSlider.swift', 'PanelView.swift', 'PresetsView.swift', 'ShortcutsView.swift']
+         'ShortcutRecorder.swift', 'CompactSlider.swift', 'DisplaySettingsView.swift', 'PanelView.swift', 'PresetsView.swift', 'ShortcutsView.swift']
 swift = '\n'.join([stubs] + [(source / name).read_text() for name in files])
 # Replace the hardware mode model only in this temporary documentation executable.
 start = swift.index('struct DisplayMode: Identifiable {')
@@ -22,6 +22,7 @@ swift = swift[:start] + '''struct DisplayMode: Identifiable {
     var descriptor: ModeDescriptor { .init(id: id, width: width, height: height, pixelWidth: width * 2, refresh: 60) }
     var size: String { "\\(width) × \\(height)" }
     var detail: String { "HiDPI · 60 Hz" }
+    var favorite: FavoriteResolution? { .init(width: width, height: height, pixelWidth: width * 2, pixelHeight: height * 2, refresh: 60) }
 }
 ''' + swift[end:]
 swift = swift.replace('UserDefaults.standard', 'DocumentationDefaults.shared')

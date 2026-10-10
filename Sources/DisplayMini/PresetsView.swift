@@ -80,7 +80,7 @@ struct PresetsView: View {
                     if index < 3 { Text(store.shortcutKeys(DisplayShortcut.presetActions[index])).font(.system(size: 10)).foregroundStyle(.secondary) }
                 }
                 ForEach(preset.displays, id: \.uuid) { display in
-                    Text("\(display.name) · ☀ \(Int((display.brightness * 100).rounded()))%" +
+                    Text("\(store.displayName(for: display.uuid, fallback: display.name)) · ☀ \(Int((display.brightness * 100).rounded()))%" +
                          (display.volume.map { " · Volume \(Int(($0 * 100).rounded()))%" } ?? ""))
                         .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(2)
                 }

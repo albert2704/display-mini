@@ -9,7 +9,7 @@ import subprocess
 root = Path(__file__).resolve().parents[2]
 for name in ['README.md', 'docs/USER_GUIDE.md', 'docs/DEVELOPMENT.md', 'docs/media/README.md']:
     document = root / name
-    links = re.findall(r'(?:src|href)="([^"]+)"|\]\(([^)]+)\)', document.read_text())
+    links = re.findall(r'(?:src|srcset|href)="([^"]+)"|\]\(([^)]+)\)', document.read_text())
     for alternatives in links:
         target = next(value for value in alternatives if value).split('#')[0]
         if not target or re.match(r'\w+://', target):
@@ -18,7 +18,8 @@ for name in ['README.md', 'docs/USER_GUIDE.md', 'docs/DEVELOPMENT.md', 'docs/med
 
 expected = {'panel': (600, 824), 'presets': (760, 880), 'diagnostics': (680, 1180),
             'shortcuts': (760, 1040), 'shortcut-editor': (760, 1040),
-            'shortcut-listening': (760, 1040), 'shortcut-recorded': (760, 1040)}
+            'shortcut-listening': (760, 1040), 'shortcut-recorded': (760, 1040),
+            'display-settings': (720, 1120), 'display-settings-dark': (720, 1120)}
 for name, dimensions in expected.items():
     data = (root / f'docs/media/{name}.png').read_bytes()
     assert data[:8] == b'\x89PNG\r\n\x1a\n', name
@@ -37,4 +38,4 @@ assert gif[:6] in (b'GIF87a', b'GIF89a')
 assert struct.unpack('<HH', gif[6:10]) == (800, 450)
 for item in (root / 'docs/media').iterdir():
     assert item.stat().st_size < 10 * 1024 * 1024, f'{item.name}: exceeds documentation size budget'
-print('Documentation links, seven PNGs, GIF dimensions, MP4 codec/duration and file sizes pass.')
+print('Documentation links, nine PNGs, GIF dimensions, MP4 codec/duration and file sizes pass.')

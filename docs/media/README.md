@@ -13,6 +13,8 @@ The renderer reuses the hardware substitutes from the store tests, disables moni
 | `shortcut-editor.png` | Editor before recording. |
 | `shortcut-listening.png` | Active recording prompt. |
 | `shortcut-recorded.png` | Captured Control+Shift+K, before Save. |
+| `display-settings.png` | Custom display name and favorite resolutions in light appearance. |
+| `display-settings-dark.png` | The same example in dark appearance. |
 | `walkthrough.gif` | Small inline preview for GitHub Markdown. |
 | `walkthrough.mp4` | 24 second, 1280×720 H.264 walkthrough. |
 

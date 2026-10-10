@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .build/checks .build/native-cache
 source scripts/toolchain.sh
-xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library -emit-object -emit-module \
+xcrun swiftc "${SWIFT_COMPAT[@]}" -whole-module-optimization -parse-as-library -emit-object -emit-module \
   -module-name DisplayCore Sources/DisplayCore/*.swift -o .build/checks/DisplayCore.o \
   -emit-module-path .build/checks/DisplayCore.swiftmodule -module-cache-path .build/native-cache
 xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library -I .build/checks .build/checks/DisplayCore.o \

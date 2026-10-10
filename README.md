@@ -41,6 +41,8 @@ The silent, captioned walkthrough covers the panel, presets, and recording a sho
 | Presets | Saves named brightness/volume snapshots and applies them to matching connected screens. |
 | Keyboard shortcuts | Controls the screen under the pointer; also applies the first three presets. |
 | Resolution | Lists modes reported by macOS, including available HiDPI and refresh variants. A preview reverts after 15 seconds unless kept. |
+| Favorite resolutions | Stars preferred modes per screen and puts available favorites at the top of its resolution menu. |
+| Custom screen names | Labels screens for your setup while preserving their original names and hardware identity. |
 | Connection switch | Disconnects a display from the desktop and reconnects it. The last active display is protected. |
 | Recovery | Reconnects displays disconnected by this app, removes dimming, and retries pending resolution recovery. |
 | Compatibility profiles | Standard or Slow monitor response timing, remembered per display. |
@@ -75,6 +77,10 @@ open "dist/Display Mini.app"
 ```
 
 No third party packages are downloaded during the build. The app bundles the vendored monitor helper. The supported scripts work with Command Line Tools without an Xcode project.
+
+## Personalize your screens
+
+Open the **gear beside a screen's name** to give it a custom label and star favorite resolutions. Names and stars stay local and survive relaunch. Picking a favorite uses the same Keep/Revert preview as any other resolution. See [display personalization](docs/USER_GUIDE.md#screen-names-and-favorite-resolutions).
 
 ## Everyday shortcuts
 
@@ -119,6 +125,8 @@ Nineteen automated logic cases cover 153 assertions, including probe validation,
 DDC discovery inspects up to 64 online displays and matches the control service's EDID against the selected screen. Connections without readable EDID and monitors reporting identical identities may remain unavailable. Slow timing can help delayed replies; it cannot make an incompatible dock forward DDC.
 
 Local checks included app launch, accessibility and visual inspection, native display discovery, valid LG brightness/volume reads, and a live disconnect followed by recovery. That check exposed a missing UUID during disconnection; the app now stores the hardware identity and has regression coverage for identity matching. Full hardware mutation and resolution testing remains incomplete. Hosted CI checks compilation and logic, not monitor behavior.
+
+Four personalization model scenarios and three store scenarios cover names, mode geometry and refresh variants, persistence, malformed preferences, storage limits, and stale favorite rejection. Live UI checks confirmed name and favorite persistence across relaunch, followed by removal of the temporary test settings.
 
 ## License and attribution
 
