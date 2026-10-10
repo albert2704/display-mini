@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><body><template>
+<style>
+#step4{position:absolute;inset:0;width:100%;height:100%;font-family:system-ui,sans-serif;color:#18263a}
+#step4 .copy{position:absolute;left:66px;top:174px;width:585px}
+#step4 .eyebrow{color:#0866cf;font-size:19px;letter-spacing:2px;font-weight:700;margin:0 0 25px}
+#step4 h1{font-size:59px;letter-spacing:-2.2px;line-height:1.05;white-space:pre-line;margin:0 0 27px;font-weight:750}
+#step4 .body{font-size:25px;line-height:1.5;max-width:520px;margin:0}
+#step4 .note{margin:29px 0 0;font-size:19px;line-height:1.45;color:#475972;max-width:490px}
+#step4 .keys{display:flex;gap:10px;margin-top:20px;height:48px}
+#step4 .keycap{display:flex;align-items:center;justify-content:center;padding:0 16px;border:1px solid #a9bbd1;border-bottom-width:3px;border-radius:9px;background:#fff;color:#18263a;font-size:24px;font-weight:650}
+#step4 .keys+.note{margin-top:18px}
+#step4 .shot{position:absolute;left:731px;top:62px;width:480px;height:600px;display:flex;align-items:center;justify-content:center}
+#step4 .image-frame{position:relative}
+#step4 img{height:600px;width:auto;border:1px solid #bac6d5;border-radius:15px;box-shadow:0 16px 42px #243a531f;display:block}
+#step4 .highlight{position:absolute;border:3px solid #0866cf;border-radius:9px;pointer-events:none;box-shadow:0 0 0 4px #0866cf20}
+#step4 .record{left:34.5%;top:27.4%;width:31.5%;height:5.6%}
+#step4 .save{left:83%;top:92.1%;width:13%;height:5.2%}
+</style>
+<div id="step4" data-composition-id="step4" data-width="1280" data-height="720" data-duration="3.35">
+<div class="copy"><p class="eyebrow">04 / RECORD</p><h1>Click
+Record Shortcut.</h1><p class="body">Use your keyboard to choose a combination. The compact key menu is also available.</p><p class="note">Include Control or Command.</p></div>
+<div class="shot"><div class="image-frame"><img src="assets/shortcut-editor.png" alt="Display Mini shortcut editor with sample data"><div class="highlight record" aria-hidden="true"></div></div></div>
+</div>
+<script>
+const tl=gsap.timeline({paused:true});
+tl.fromTo('#step4 .copy',{opacity:0,x:14},{opacity:1,x:0,duration:0.35,ease:'power2.out'},0);
+tl.fromTo('#step4 .shot',{opacity:0,y:0,scale:1},{opacity:1,y:0,scale:1,duration:0.35,ease:'power2.out'},0);
+
+tl.fromTo('#step4 .highlight',{opacity:0,scale:1.06},{opacity:1,scale:1,duration:0.4,ease:'power2.out'},0.65);
+tl.to('#step4 .highlight',{opacity:0.4,duration:0.35,repeat:1,yoyo:true,ease:'sine.inOut'},1.5);
+tl.to('#step4 .copy',{opacity:0,x:-10,duration:0.22,ease:'power1.in'},2.78);
+tl.to('#step4 .shot',{opacity:0,duration:0.35,ease:'none'},3);
+window.__timelines['step4']=tl;
+</script></template></body></html>
