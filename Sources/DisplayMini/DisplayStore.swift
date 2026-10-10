@@ -42,6 +42,13 @@ struct DisplayMode: Identifiable {
     var volumeMaximum = 100
     var confirmedBrightness = 1.0
     var confirmedVolume: Double?
+    var volumeBeforeMute: Double? {
+        get { UserDefaults.standard.object(forKey: "volumeBeforeMute.\(id)") as? Double }
+        set { UserDefaults.standard.set(newValue, forKey: "volumeBeforeMute.\(id)") }
+    }
+    func rememberVolume() {
+        volumeBeforeMute = MonitorAudio.rememberedVolume(confirmed: confirmedVolume, previous: volumeBeforeMute)
+    }
     var revision = 0
     var brightnessRevision = 0
     var volumeRevision = 0
@@ -296,6 +303,7 @@ struct DisplayMode: Identifiable {
             device.brightnessMaximum = device.ddcProbe?.brightness.maximum ?? 100
             device.volumeMaximum = device.ddcProbe?.volume.maximum ?? 100
             device.volume = volume; device.confirmedVolume = volume
+            device.rememberVolume()
             if !device.forceSoftware && !device.nativeBrightness, let brightness {
                 device.brightnessMethod = "Combined"
                 device.brightness = ControlMath.combinedValue(hardware: brightness, software: device.softwareFraction)
@@ -355,7 +363,7 @@ struct DisplayMode: Identifiable {
     }
 
     func setVolume(_ device: DisplayDevice, _ value: Double) {
-        guard device.connected, device.volume != nil, !connectionBusy else { return }
+        guard device.connected, device.volume != nil, !connectionBusy, pendingResolution == nil else { return }
         device.revision += 1; device.volumeRevision += 1; device.error = nil; device.volume = ControlMath.clamp(value)
         device.pendingVolume?.cancel()
         let work = DispatchWorkItem { [weak self, weak device] in
@@ -365,7 +373,7 @@ struct DisplayMode: Identifiable {
             self.ddc.write(uuid: device.id, timing: device.ddcTiming, attribute: "volume", value: ControlMath.rawValue(fraction: requested, maximum: device.volumeMaximum)) { [weak device] result in
                 guard let device else { return }; device.writesInFlight = max(0, device.writesInFlight - 1)
                 guard device.volumeRevision == revision, device.connected else { return }
-                if case .success = result { device.confirmedVolume = requested }
+                if case .success = result { device.confirmedVolume = requested; device.rememberVolume() }
                 else if case .failure(let error) = result {
                     device.volume = device.confirmedVolume; device.error = error.localizedDescription
                 }
@@ -373,6 +381,12 @@ struct DisplayMode: Identifiable {
         }
         device.pendingVolume = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+    }
+
+    func toggleMute(_ device: DisplayDevice) {
+        guard canConfigureDDC(device), let volume = device.confirmedVolume else { return }
+        device.rememberVolume()
+        setVolume(device, MonitorAudio.toggledVolume(current: volume, remembered: device.volumeBeforeMute))
     }
 
     func setSoftwareOnly(_ device: DisplayDevice, _ value: Bool) {
