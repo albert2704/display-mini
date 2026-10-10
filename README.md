@@ -57,7 +57,7 @@ No third party packages are downloaded during the build. The app bundles the ven
 
 ## Everyday shortcuts
 
-Hold **Control + Option + Command** with:
+Default bindings (editable from the keyboard button): hold **Control + Option + Command** with:
 
 | Key | Action |
 | --- | --- |
@@ -67,7 +67,7 @@ Hold **Control + Option + Command** with:
 | 1 / 2 / 3 | Apply the first / second / third saved preset |
 | R | Restore displays |
 
-Brightness, volume and mute target the **screen under your pointer**. Open the keyboard button in the footer to see the keys or disable everyday shortcuts. Recovery stays independently enabled. Volume needs DDC support. These are registered modifier shortcuts, with no Accessibility or Input Monitoring permission required.
+Brightness, volume and mute target the **screen under your pointer**. Open the keyboard button in the footer to change any key combination, reset defaults, or disable everyday shortcuts. Recovery stays independently enabled, with ⌃⌥⌘R retained as a fallback. Volume needs DDC support. These are registered modifier shortcuts, with no Accessibility or Input Monitoring permission required.
 
 Open the sliders button in the footer to save, rename, apply or delete presets. See the [user guide](docs/USER_GUIDE.md#presets) for matching and failure behavior.
 
@@ -93,7 +93,7 @@ Keep another visible display available when first testing connection controls. R
 
 ## Validation and limits
 
-Nineteen automated logic cases cover 153 assertions, including probe validation, report privacy, brightness math, mode selection, display identity, unplug recovery, mute restore, preset validation and batch completion. Five store scenarios exercise the actual control orchestration with simulated hardware, including canceled writes, recovery reconciliation and shortcut guards. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
+Nineteen automated logic cases cover 153 assertions, including probe validation, report privacy, brightness math, mode selection, display identity, unplug recovery, mute restore, preset validation and batch completion. Five shortcut scenarios cover saved preferences, failed-edit rollback, dispatch, reset, recovery, and conflicts. Five store scenarios exercise the actual control orchestration with simulated hardware, including canceled writes, recovery reconciliation and shortcut guards. Six subprocess scenarios cover timeout, missing helper, rejection, excessive output and inherited pipes. Objective-C checks cover DDC replies, EDID validation, duplicate identities, selectors beyond the old four-display cap, and timing. These tests do not operate physical monitors.
 
 DDC discovery inspects up to 64 online displays and matches the control service's EDID against the selected screen. Connections without readable EDID and monitors reporting identical identities may remain unavailable. Slow timing can help delayed replies; it cannot make an incompatible dock forward DDC.
 

@@ -25,6 +25,7 @@ No server, network request, account, or external runtime is involved. The app is
 | --- | --- |
 | `Sources/DisplayMini/AppMain.swift` | App lifecycle, status item, popover, duplicate instance handling, shortcut dispatch and preference subscription. |
 | `Sources/DisplayMini/PanelView.swift` | Display cards, control bindings, DDC settings, resolution confirmation, footer. |
+| `Sources/DisplayMini/ShortcutPreferences.swift` | Validated bindings, supported physical keys, modifier mapping and defaults. |
 | `Sources/DisplayMini/ShortcutController.swift` | Carbon registration lifecycle, validated hotkey IDs, per-action conflict reports. |
 | `Sources/DisplayMini/PresetsView.swift`, `ShortcutsView.swift` | Preset management and shortcut reference/settings. |
 | `Sources/DisplayMini/CompactSlider.swift` | Native NSSlider tracking, custom drawing, keyboard accessibility, release callbacks. |
@@ -73,7 +74,9 @@ Subprocess output is read through a nonblocking pipe and limited to 64 KiB. A de
 
 `PresetPlan` matches current UUIDs and records skipped controls. The store runs one step at a time through the existing write paths and accepts completion once per step and batch token. UI completion waits for verified writes. Sleep, topology notifications, refresh, recovery and shutdown invalidate the batch and cancel pending work. An in-flight DDC command can still finish; `needsControlRead` blocks new captures and edits until a reconciliation read completes after outstanding work drains. Stale completions cannot start the next preset step or reapply software dimming. Opening the panel while a batch runs does not trigger refresh or interrupt it.
 
-`ShortcutController` owns Carbon hotkey references and its event handler. It validates the event signature and action ID, dispatches on the main actor and reports each registration failure. Everyday registrations can be released independently of recovery. No global event tap or arbitrary key interception is used. `DisplayStore.performShortcut` resolves `NSEvent.mouseLocation` against `NSScreen.frame` and then the corresponding display ID, with no other-screen fallback. Preset keys use insertion order instead of pointer targeting.
+`ShortcutController` owns its event handler and a registrar that retains Carbon hotkey references. It validates the event signature and action ID, dispatches on the main actor and reports each registration failure. Bindings are keyed by physical key code and modifiers. Registration IDs are generated for new chords and mapped to actions, so stale IDs released by an edit cannot dispatch. User edits first acquire new registrations, then release obsolete keys; if a changed key fails, staged registrations are released and the old mapping remains intact. Existing unrelated startup conflicts do not block another edit. Reused chords are reassigned without double-registering, allowing reset even when a default chord currently belongs to another action. Startup/toggle registers available keys and reports each unavailable one. Tests inject a registrar without global keyboard side effects.
+
+Everyday registrations can be released independently of both the customized recovery key and its fixed Ctrl+Option+Command+R fallback. Schema-1 shortcut preferences validate all nine actions, supported key codes, modifier bits, unique chords and reserved recovery before loading. Edits require Control or Command. Preferences are saved only after registration succeeds (or deferred for disabled everyday actions); unreadable saved data is preserved and backed up on explicit save/reset. No global event tap or arbitrary key interception is used. `DisplayStore.performShortcut` resolves `NSEvent.mouseLocation` against `NSScreen.frame` and then the corresponding display ID, with no other-screen fallback. Preset keys use insertion order instead of pointer targeting.
 
 ## Resolution transactions
 
@@ -108,6 +111,7 @@ Domain: `dev.albert.DisplayMini` in local UserDefaults.
 | `displayPresets` | Schema-1 JSON with names, IDs, screen UUIDs/names and brightness/volume. | Named local snapshots. |
 | `displayPresetsBackup` | Previous unreadable payload, created only on explicit reset. | Recoverable local backup. |
 | `volumeBeforeMute.<UUID>` | Last confirmed positive monitor volume. | Unmute after app restart. |
+| `shortcutBindings`, `shortcutBindingsBackup` | Schema-1 JSON action/key/modifier bindings; optional unreadable-data backup. | Persist editable shortcuts; preserve invalid data before reset/save. |
 | `everydayShortcutsEnabled` | Boolean, defaults to true. | Enable everyday hotkeys independently of recovery. |
 | `resolutionRecovery` | UUID and previous mode ID, logical size, pixel width, refresh. | Recover an unconfirmed mode after failure or restart. |
 
