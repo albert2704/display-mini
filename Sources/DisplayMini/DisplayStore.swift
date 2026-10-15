@@ -105,9 +105,14 @@ struct DisplayMode: Identifiable {
     @Published var personalizationMessage: String?
     private let personalizationDefaults: UserDefaults
     private let advancedDefaults: UserDefaults
+    private let presetDefaults: UserDefaults
     @Published var linkedBrightnessEnabled = false {
         didSet { advancedDefaults.set(linkedBrightnessEnabled, forKey: "linkedBrightnessEnabled") }
     }
+    @Published private(set) var brightnessLinkSelection = BrightnessLinkSelection()
+    @Published private(set) var brightnessLinkStorageError: String?
+    let automations: PresetAutomationController
+    let keepAwake: KeepAwakeController
     private var presetProgress: PresetProgress?
     private var presetSteps: [PresetPlan.Step] = []
     private var presetSkipped = 0
@@ -140,11 +145,25 @@ struct DisplayMode: Identifiable {
     }
     var activeCount: Int { displays.filter(\.connected).count }
 
-    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard, personalizationDefaults: UserDefaults = .standard, advancedDefaults: UserDefaults = .standard) {
+    init(startMonitoring: Bool = true, shortcutDefaults: UserDefaults = .standard, personalizationDefaults: UserDefaults = .standard, advancedDefaults: UserDefaults = .standard,
+         presetDefaults: UserDefaults = .standard, automationController: PresetAutomationController? = nil, keepAwakeController: KeepAwakeController? = nil) {
         self.shortcutDefaults = shortcutDefaults
         self.personalizationDefaults = personalizationDefaults
         self.advancedDefaults = advancedDefaults
+        self.presetDefaults = presetDefaults
+        self.automations = automationController ?? PresetAutomationController(defaults: advancedDefaults, automaticTimers: startMonitoring)
+        self.keepAwake = keepAwakeController ?? KeepAwakeController(startTimer: startMonitoring)
         self.linkedBrightnessEnabled = advancedDefaults.bool(forKey: "linkedBrightnessEnabled")
+        if let object = advancedDefaults.object(forKey: "brightnessLinkSelection") {
+            do {
+                guard let data = object as? Data else { throw BrightnessLinkSelection.StorageError.invalid }
+                brightnessLinkSelection = try BrightnessLinkSelection.decode(data)
+            }
+            catch {
+                brightnessLinkSelection = BrightnessLinkSelection(mode: .selected)
+                brightnessLinkStorageError = error.localizedDescription
+            }
+        }
         if let data = personalizationDefaults.data(forKey: "displayPersonalization") {
             do { personalization = try DisplayPersonalization.decode(data) }
             catch { personalizationStorageError = error.localizedDescription }
@@ -153,7 +172,7 @@ struct DisplayMode: Identifiable {
             do { shortcutPreferences = try ShortcutPreferences.decode(data) }
             catch { shortcutStorageMessage = error.localizedDescription }
         }
-        if let data = UserDefaults.standard.data(forKey: "displayPresets") {
+        if let data = presetDefaults.data(forKey: "displayPresets") {
             do { presetLibrary = try PresetLibrary.decode(data) }
             catch { presetStorageError = error.localizedDescription }
         }
@@ -169,11 +188,73 @@ struct DisplayMode: Identifiable {
             Task { @MainActor in self?.scheduleRefresh() }
         })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.sleeping = false; self?.scheduleRefresh() }
+            MainActor.assumeIsolated {
+                self?.sleeping = false
+                self?.scheduleRefresh()
+                self?.automations.resume()
+            }
         })
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.sleeping = true; self?.cancelControlEdits() }
+            MainActor.assumeIsolated {
+                self?.sleeping = true
+                self?.automations.suspend()
+                self?.keepAwake.suspend()
+                self?.cancelControlEdits()
+            }
         })
+        startAutomations()
+    }
+
+    func startAutomations() {
+        automations.start(presets: { [weak self] in self?.presetLibrary.presets ?? [] },
+                          canApply: { [weak self] preset in
+                              guard let self else { return "Display controls are unavailable." }
+                              return self.automationSkipReason(for: preset)
+                          },
+                          apply: { [weak self] preset in self?.applyPreset(preset) ?? false })
+    }
+
+    func automationSkipReason(for preset: DisplayPreset) -> String? {
+        guard !shuttingDown, !sleeping else { return "Display Mini is asleep or closing." }
+        guard !unresolvedRecovery else { return "A display resolution still needs recovery." }
+        guard canSavePreset else { return "Display controls are busy or unavailable." }
+        guard preset.displays.contains(where: { saved in displays.contains { $0.connected && $0.id == saved.uuid } }) else {
+            return "None of this preset’s screens are connected."
+        }
+        return nil
+    }
+
+    func setBrightnessLinkMode(_ mode: BrightnessLinkSelection.Mode) {
+        var selection = brightnessLinkSelection
+        selection.mode = mode
+        saveBrightnessSelection(selection)
+    }
+
+    func setBrightnessLinkMember(_ identity: String, included: Bool) {
+        guard let identity = UUID(uuidString: identity)?.uuidString else { return }
+        var selection = brightnessLinkSelection
+        if included { selection.displayUUIDs.insert(identity) }
+        else { selection.displayUUIDs.remove(identity) }
+        saveBrightnessSelection(selection)
+    }
+
+    private func saveBrightnessSelection(_ selection: BrightnessLinkSelection) {
+        guard brightnessLinkStorageError == nil else { return }
+        do {
+            let data = try JSONEncoder().encode(selection.validated())
+            advancedDefaults.set(data, forKey: "brightnessLinkSelection")
+            brightnessLinkSelection = selection
+        } catch { message = error.localizedDescription }
+    }
+
+    func resetUnreadableBrightnessSelection() {
+        guard brightnessLinkStorageError != nil else { return }
+        if let original = advancedDefaults.object(forKey: "brightnessLinkSelection") {
+            let key = advancedDefaults.object(forKey: "brightnessLinkSelectionBackup") == nil ? "brightnessLinkSelectionBackup" : "brightnessLinkSelectionBackup.\(UUID().uuidString)"
+            advancedDefaults.set(original, forKey: key)
+        }
+        brightnessLinkStorageError = nil
+        saveBrightnessSelection(BrightnessLinkSelection(mode: .selected))
     }
 
     func screen(for device: DisplayDevice) -> NSScreen? {
@@ -477,9 +558,10 @@ struct DisplayMode: Identifiable {
         guard !controlsBusy, !sleeping, !shuttingDown, device.connected, !device.needsControlRead,
               !device.advancedBusy, displays.contains(where: { $0 === device }) else { return }
         writeBrightness(device, value)
-        if linkedBrightnessEnabled {
-            let others = displays.filter { $0 !== device && $0.connected }
-            let ready = others.filter { !$0.reading && !$0.needsControlRead && !$0.advancedBusy }
+        if linkedBrightnessEnabled && brightnessLinkStorageError == nil && brightnessLinkSelection.includes(device.id) {
+            let others = displays.filter { $0 !== device && $0.connected && brightnessLinkSelection.includes($0.id) }
+            // Pending brightness edits coalesce to the newest value across the group.
+            let ready = others.filter { !$0.reading && !$0.writing && !$0.needsControlRead && !$0.advancedBusy && $0.pendingVolume == nil }
             for other in ready { writeBrightness(other, value) }
             if ready.count != others.count { message = "Linked brightness skipped \(others.count - ready.count) busy display(s). Try again when their controls are ready." }
         }
@@ -654,15 +736,15 @@ struct DisplayMode: Identifiable {
             var library = presetLibrary
             try edit(&library)
             let data = try JSONEncoder().encode(library)
-            UserDefaults.standard.set(data, forKey: "displayPresets")
+            presetDefaults.set(data, forKey: "displayPresets")
             presetLibrary = library; presetMessage = nil
             return true
         } catch { presetMessage = error.localizedDescription; return false }
     }
     func resetUnreadablePresets() {
         guard presetStorageError != nil else { return }
-        UserDefaults.standard.set(UserDefaults.standard.data(forKey: "displayPresets"), forKey: "displayPresetsBackup")
-        UserDefaults.standard.removeObject(forKey: "displayPresets")
+        presetDefaults.set(presetDefaults.data(forKey: "displayPresets"), forKey: "displayPresetsBackup")
+        presetDefaults.removeObject(forKey: "displayPresets")
         presetLibrary = PresetLibrary(); presetStorageError = nil; presetMessage = "Created an empty library. The unreadable data was backed up locally."
     }
 
@@ -688,6 +770,7 @@ struct DisplayMode: Identifiable {
                 let skipped = self.presetSkipped > 0 ? " \(self.presetSkipped) unavailable controls skipped." : ""
                 self.presetMessage = current.failures == 0 ? "Applied “\(name)”.\(skipped)" : "“\(name)” finished with \(current.failures) failed changes. Check the display errors.\(skipped)"
                 self.message = self.presetMessage
+                self.automations.completeActivePreset(message: self.presetMessage ?? "Preset finished.", succeeded: current.failures == 0)
                 self.presetProgress = nil; self.applyingPresetName = nil
             } else { self.runNextPresetStep() }
         }
@@ -970,6 +1053,8 @@ struct DisplayMode: Identifiable {
 
     func shutdown() {
         shuttingDown = true
+        automations.shutdown()
+        keepAwake.shutdown()
         refreshWork?.cancel()
         recoveryTimer?.invalidate(); recoveryTimer = nil
         if let recoveryActivity { ProcessInfo.processInfo.endActivity(recoveryActivity) }
@@ -986,6 +1071,7 @@ struct DisplayMode: Identifiable {
         if let name = applyingPresetName {
             presetMessage = "“\(name)” was interrupted. Some changes may already have reached the monitors."
             message = presetMessage
+            automations.completeActivePreset(message: presetMessage ?? "Preset interrupted.", succeeded: false)
         }
         presetProgress = nil; presetSteps = []; applyingPresetName = nil
         for device in displays {
