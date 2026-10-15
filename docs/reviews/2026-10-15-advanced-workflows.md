@@ -4,7 +4,7 @@ Date: 2026-10-15. Branch: `feature/advanced-workflows`. Scope: spec 0006.
 
 ## Automated checks
 
-`scripts/test.sh`, `scripts/check-toolchain.sh`, `scripts/build.sh`, signing/Info.plist validation, `tooling/docs/check-media.py` and `git diff --check` pass.
+`scripts/test.sh`, `scripts/check-toolchain.sh`, `scripts/build.sh`, signing/Info.plist validation, `scripts/package.sh`, `tooling/docs/check-media.py` and `git diff --check` pass. [PR #7](https://github.com/albert2704/display-mini/pull/7) tracks the required hosted macOS build.
 
 New coverage exercises selected brightness sources and targets, empty selection, persistence, malformed JSON and wrong preference types, backup/reset, busy targets and independent presets. Three schedule model groups and six controller groups cover validation, recurrence, DST, duplicate occurrences, clock reversal, startup and wake gaps, timezone changes, missing presets, busy controls, simultaneous rules, storage failure and completion. Four power-controller groups cover creation/release failures, replacement, deadline expiry, sleep and shutdown. Five workflow store groups include actual scheduler-to-store-to-fake-DDC success, failed writes, interruption, reconciliation and a later schedule.
 

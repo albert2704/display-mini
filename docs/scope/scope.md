@@ -61,9 +61,10 @@ The user delegated the next functionality update and agent orchestration. Spec 0
 - [x] Run the integrated regression suite and independent review (AC-6).
 - [x] Verify native controls and a short power assertion; capture updated screenshots (AC-1, AC-6). [Results and limits](../reviews/2026-10-15-advanced-workflows.md).
 - [x] Update the user guides, limitations, feature research and unreleased changelog.
-- [ ] Publish the reviewed PR and record its result.
+- [x] Publish [PR #7](https://github.com/albert2704/display-mini/pull/7). Its required macOS check tracks the latest CI result.
+- [ ] Merge PR #7 after review.
 
-Code in `Sources/DisplayCore/BrightnessLinkSelection.swift`, `Sources/DisplayCore/PresetSchedule.swift`, `Sources/DisplayMini/KeepAwakeController.swift`, `Sources/DisplayMini/PresetAutomationController.swift`, their views and DisplayStore integration. Integrated and native checks are complete; publication remains pending.
+Code in `Sources/DisplayCore/BrightnessLinkSelection.swift`, `Sources/DisplayCore/PresetSchedule.swift`, `Sources/DisplayMini/KeepAwakeController.swift`, `Sources/DisplayMini/PresetAutomationController.swift`, their views and DisplayStore integration. Integrated and native checks are complete; PR #7 awaits review and merge.
 
 ## Deferred
 
