@@ -33,6 +33,32 @@ Quit other display utilities while testing. Automatic brightness, monitor settin
 
 Combined slider values include a software range and do not map one to one to physical backlight percentages.
 
+## Linked brightness does not reach a screen
+
+Under **Advanced**, check that **Link brightness** is on. **All screens** includes newly connected screens; **Selected screens** includes only the checked screens. Both the screen you edit and the screens receiving the change must participate. An empty selection links nothing, and editing an unchecked screen affects only that screen.
+
+Linked targets must be connected and ready. Wait for detection, pending volume changes, active writes or advanced operations to finish, then try a brightness edit again. Changing the participant selection does not itself change brightness. Presets retain their saved levels and changes made in macOS or other apps are not followed.
+
+An unreadable selection pauses linking. **Reset Selection** backs up the unreadable data and starts with no selected screens. Select your participants again afterward. An **Offline screen** row retains a remembered identity; reconnect that screen or uncheck it if you no longer use it.
+
+## A preset schedule did not run
+
+Check the schedule's enabled switch, preset, recurrence and local time under **Advanced**. New schedules start disabled. Display Mini must already be running and the Mac must be awake when the time arrives. Launching or waking after that time does not catch up, and creating a rule within its scheduled minute does not make it run immediately.
+
+The schedule result explains a missing preset, busy controls, unresolved resolution recovery, no connected matching screens or a simultaneous schedule. Those occurrences are skipped without retries. If you want the preset now, use **Apply** in the footer's Presets panel once the issue is resolved. Editing or toggling a schedule does not allow a second run on the same date.
+
+Only the first eligible rule starts when several are due together. Separate their times to run more than one. Timezone changes and processing gaps longer than 90 seconds reset the timing baseline. Daylight saving gaps are skipped. After moving the clock backward, a schedule waits for a date later than its last handled date; it does not repeat a past occurrence.
+
+**Started** confirms that preset application began. Read the final result for confirmed writes, skipped controls and failures. A deleted preset cannot be matched by name to a new preset; edit the schedule to choose the replacement.
+
+Unreadable schedule or occurrence storage pauses scheduling. **Back Up and Reset Schedules** starts an empty schedule library while keeping a local copy of the original data. Presets themselves are retained.
+
+## Keep Displays Awake did not keep a screen on
+
+This control prevents idle display sleep for an explicit 15, 30 or 60 minute session. It does not override closing the lid or manual sleep, reconnect a screen, or light a display that was already off. The session ends on sleep or app quit and is always off at launch. Check the countdown in **Advanced** and start a new session if needed.
+
+If starting fails, the card remains inactive and shows the macOS error. Try **Start** again. If stopping fails, the card retains the active state so you can retry **Stop**; macOS still has an automatic timeout. The app does not need Accessibility or Input Monitoring permission for this feature.
+
 ## A screen will not reconnect
 
 If you disabled the MacBook screen using Display Mini and then unplugged the last external screen, the app attempts to restore the MacBook screen automatically with the lid open. Allow a few seconds for macOS to update its display list. The app must still be running. Recovery pauses for a closed lid, sleep, an unreadable lid state, or another active external screen.

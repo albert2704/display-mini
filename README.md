@@ -3,7 +3,7 @@
 [![Build and checks](https://github.com/albert2704/display-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/albert2704/display-mini/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small, open source macOS menu bar app for **brightness, resolution, monitor volume, presets, and keyboard shortcuts**, with an **Advanced tab** for contrast, input switching, linked brightness and refresh rates.
+A small, open source macOS menu bar app for **brightness, resolution, monitor volume, presets, and keyboard shortcuts**, with an **Advanced tab** for selected screen brightness linking, preset schedules, timed Keep Displays Awake sessions, contrast, input switching and refresh rates.
 
 <p align="center">
   <img src="docs/media/panel.png" width="300" alt="Display Mini panel with brightness and resolution for two displays, external speaker volume, mute, and footer controls">
@@ -44,7 +44,9 @@ The silent, captioned walkthrough covers the panel, presets, and recording a sho
 | Favorite resolutions | Stars preferred modes per screen and puts available favorites at the top of its resolution menu. |
 | Custom screen names | Labels screens for your setup while preserving their original names and hardware identity. |
 | Advanced tab | Keeps extra display controls in a separate view while preserving the recovery footer. |
-| Linked brightness | Optionally applies brightness edits made in Display Mini to all ready connected screens. |
+| Linked brightness | Applies brightness edits made on a participating screen to all ready screens or just your selected screens. |
+| Preset schedules | Applies a saved preset at a local time every day, on weekdays or on weekends while the app is running and awake. |
+| Keep Displays Awake | Prevents idle display sleep for 15, 30 or 60 minutes, with a countdown and Stop. |
 | Monitor contrast | Reads the monitor's range and verifies hardware contrast writes on supported connections. |
 | Input switching | Sends standard DDC input commands after confirmation, when the monitor reports an identified current input. |
 | Refresh rate | Chooses rates reported for the current resolution and pixel dimensions, with Keep/Revert. |
@@ -105,14 +107,18 @@ Open the sliders button in the footer to save, rename, apply or delete presets. 
 
 ## Advanced controls
 
-Choose **Advanced** at the top of the panel. Link brightness across screens, change refresh rate while keeping the same resolution, or click **Detect** to check an external monitor's contrast and input support.
+Choose **Advanced** at the top of the panel. The first cards control brightness linking, Keep Displays Awake and preset schedules. Scroll down to each screen's refresh rate, contrast and input controls. Recovery and any Keep/Revert countdown stay available below both tabs.
+
+* **Link brightness:** choose **All screens** or **Selected screens**. Only edits made on a participating screen are shared, and presets retain their saved levels.
+* **Keep Displays Awake:** choose 15, 30 or 60 minutes, then **Start**. Stop early at any time. Sessions end when the Mac sleeps or the app quits, and are off at launch.
+* **Preset schedules:** save a preset first, then add a local time and recurrence. New schedules start disabled. Enable one when ready; the app skips missed times and does not wake the Mac or retry a busy or unavailable setup.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/advanced-dark.png">
-  <img src="docs/media/advanced.png" width="300" alt="Advanced tab with linked brightness, refresh rates, hardware contrast, and an input switch with confirmation">
+  <img src="docs/media/advanced.png" width="300" alt="Advanced tab with compact controls for brightness linking and additional display workflows">
 </picture>
 
-Input choices are common DDC codes, not a detected port inventory. Switching can remove the Mac's picture; use the monitor's buttons to switch back. Support varies, and vendor specific input protocols are not included. [Read the Advanced guide](docs/USER_GUIDE.md#advanced-tab).
+Keep Displays Awake prevents idle sleep; it does not override closing the lid, manual sleep or disconnected screens. Input choices are common DDC codes, not a detected port inventory. Switching can remove the Mac's picture; use the monitor's buttons to switch back. Support varies, and vendor specific input protocols are not included. [Read the Advanced guide](docs/USER_GUIDE.md#advanced-tab).
 
 ## Recovery shortcut
 

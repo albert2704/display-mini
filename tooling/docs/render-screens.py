@@ -8,7 +8,7 @@ build = root / '.build/docs'
 build.mkdir(parents=True, exist_ok=True)
 source = root / 'Sources/DisplayMini'
 stubs = (root / 'Tests/DisplayStoreTests/StoreTests.swift').read_text().split('@main struct StoreTests')[0]
-files = ['DisplayStore.swift', 'ShortcutController.swift', 'ShortcutPreferences.swift',
+files = ['DisplayStore.swift', 'PresetAutomationController.swift', 'PresetAutomationView.swift', 'KeepAwakeController.swift', 'KeepAwakeView.swift', 'ShortcutController.swift', 'ShortcutPreferences.swift',
          'ShortcutRecorder.swift', 'CompactSlider.swift', 'DisplaySettingsView.swift', 'AdvancedView.swift', 'PanelView.swift', 'PresetsView.swift', 'ShortcutsView.swift']
 swift = '\n'.join([stubs] + [(source / name).read_text() for name in files])
 # Replace the hardware mode model only in this temporary documentation executable.

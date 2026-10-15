@@ -5,15 +5,59 @@ struct AdvancedView: View {
     @ObservedObject var store: DisplayStore
     var body: some View {
         VStack(spacing: PanelStyle.gap) {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: $store.linkedBrightnessEnabled) {
-                    Label("Link brightness", systemImage: "link").font(PanelStyle.heading)
-                }.toggleStyle(.switch).controlSize(.small)
-                Text("Brightness changes in Display Mini apply the same percentage to all ready screens. Presets keep their individual levels.")
-                    .font(PanelStyle.label).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.padding(12).background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: PanelStyle.radius))
+            BrightnessLinkView(store: store)
+            KeepAwakeView(controller: store.keepAwake)
+            PresetAutomationView(controller: store.automations, presets: store.presetLibrary.presets)
             ForEach(store.displays) { device in AdvancedDisplayCard(device: device, store: store) }
         }
+    }
+}
+
+private struct BrightnessLinkView: View {
+    @ObservedObject var store: DisplayStore
+    private var missingMembers: [String] {
+        store.brightnessLinkSelection.displayUUIDs.subtracting(Set(store.displays.compactMap { UUID(uuidString: $0.id)?.uuidString })).sorted()
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $store.linkedBrightnessEnabled) {
+                Label("Link brightness", systemImage: "link").font(PanelStyle.heading)
+            }.toggleStyle(.switch).controlSize(.small)
+            if let error = store.brightnessLinkStorageError {
+                Text(error).foregroundStyle(.secondary)
+                Button("Reset Selection") { store.resetUnreadableBrightnessSelection() }.controlSize(.small)
+            } else {
+                HStack {
+                    Text("Apply to")
+                    Spacer()
+                    Picker("Brightness link participants", selection: Binding(get: { store.brightnessLinkSelection.mode }, set: store.setBrightnessLinkMode)) {
+                        ForEach(BrightnessLinkSelection.Mode.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }.labelsHidden().pickerStyle(.menu).controlSize(.small).fixedSize()
+                }
+                if store.brightnessLinkSelection.mode == .selected {
+                    ForEach(store.displays.filter { UUID(uuidString: $0.id) != nil }) { device in
+                        Toggle(isOn: Binding(get: { store.brightnessLinkSelection.includes(device.id) }, set: { store.setBrightnessLinkMember(device.id, included: $0) })) {
+                            HStack(spacing: 5) {
+                                Text(device.name).lineLimit(1).help(device.name)
+                                if !device.connected { Text("Offline").foregroundStyle(.secondary) }
+                            }
+                        }.toggleStyle(.checkbox).accessibilityLabel("Link brightness for \(device.name)")
+                    }
+                    ForEach(missingMembers, id: \.self) { identity in
+                        Toggle(isOn: Binding(get: { true }, set: { store.setBrightnessLinkMember(identity, included: $0) })) {
+                            Text("Offline screen · \(identity.prefix(8))").foregroundStyle(.secondary)
+                        }.toggleStyle(.checkbox).accessibilityLabel("Remove offline screen \(identity) from brightness linking")
+                    }
+                    if store.brightnessLinkSelection.displayUUIDs.count < 2 {
+                        Text("Choose at least two screens to link their brightness.").foregroundStyle(.secondary)
+                    }
+                }
+                Text("Edits on a linked screen use the same percentage for ready participants. Presets keep their own levels.")
+                    .foregroundStyle(.secondary)
+            }
+        }.font(PanelStyle.label).fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: PanelStyle.radius))
     }
 }
 

@@ -1,8 +1,8 @@
 # Documentation media
 
-These images are native SwiftUI interface examples for Display Mini 0.3.0, generated from the production views with isolated sample data. They are not recordings of a user's desktop or proof of hardware support. The walkthrough animates transitions between these UI states, illustrates the recorded keys, and highlights Record Shortcut and Save. These are documentation annotations, with no audio or simulated pointer.
+These images are native SwiftUI interface examples generated from the production views with isolated sample data. Advanced and its schedule editor show the next update after Display Mini 0.3.0; the existing walkthrough shows the 0.3.0 shortcut workflow. They are not recordings of a user's desktop or proof of hardware support. The walkthrough animates transitions between its UI states, illustrates the recorded keys, and highlights Record Shortcut and Save. These are documentation annotations, with no audio or simulated pointer.
 
-The renderer reuses the hardware substitutes from the store tests, disables monitoring, replaces display modes with sample descriptors, and redirects defaults to a temporary domain that it removes on exit. No real monitor control or personal preferences are used. Opaque system surfaces replace translucent materials because offscreen windows have no desktop backdrop. The production app source is not modified.
+The renderer reuses the hardware substitutes from the store tests, disables monitoring and schedule timers, replaces display modes with sample descriptors, and redirects defaults to a temporary domain that it removes on exit. Sample schedules are disabled and no awake session starts. No real monitor control or personal preferences are used. Opaque system surfaces replace translucent materials because offscreen windows have no desktop backdrop. The production app source is not modified.
 
 | File | Contents |
 | --- | --- |
@@ -15,8 +15,9 @@ The renderer reuses the hardware substitutes from the store tests, disables moni
 | `shortcut-recorded.png` | Captured Control+Shift+K, before Save. |
 | `display-settings.png` | Custom display name and favorite resolutions in light appearance. |
 | `display-settings-dark.png` | The same example in dark appearance. |
-| `advanced.png` | Linked brightness, refresh rates, contrast and input in light appearance. |
+| `advanced.png` | Selected brightness participants, timed awake sessions, preset schedules and monitor controls in light appearance. |
 | `advanced-dark.png` | The Advanced tab in dark appearance. |
+| `schedule-editor.png` | Preset, local time and recurrence in the compact schedule editor. |
 | `walkthrough.gif` | Small inline preview for GitHub Markdown. |
 | `walkthrough.mp4` | 24 second, 1280×720 H.264 walkthrough. |
 

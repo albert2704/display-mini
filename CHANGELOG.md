@@ -4,6 +4,11 @@
 
 ### Added
 
+* Selected screen participants for linked brightness, with persistent membership, offline screen retention, and backup/reset for unreadable preferences.
+* Local preset schedules for every day, weekdays or weekends, with explicit enable switches, daily duplicate prevention, skipped occurrence reasons, and completion results from the existing preset executor.
+* Timed Keep Displays Awake sessions for 15, 30 or 60 minutes, with a countdown, Stop, an independent macOS timeout, and cleanup on sleep and quit.
+* Advanced workflow guides and deterministic coverage for schedule timing, selected brightness participants, and power assertion ownership.
+
 * Advanced tab with optional linked brightness, verified monitor contrast, standard input switching with confirmation, and a refresh rate picker that preserves resolution.
 * Independent advanced capability detection, unknown input handling, stale operation guards, and model/store/process regression coverage.
 * Light and dark Advanced screenshots and detailed control documentation.

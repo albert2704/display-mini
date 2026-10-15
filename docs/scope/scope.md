@@ -10,7 +10,8 @@
 | Built-in recovery after unplug | Shipped; user confirmed live recovery | Existing recovery implementation and tests |
 | Everyday controls | In progress | [0003](../specs/0003-everyday-controls.md) |
 | Custom screen names and favorite resolutions | Shipped in PR #5 | [0004](../specs/0004-display-personalization.md) |
-| Advanced tab and controls | Built; PR #6 awaiting merge | [0005](../specs/0005-advanced-controls.md) |
+| Advanced tab and controls | Shipped in PR #6 | [0005](../specs/0005-advanced-controls.md) |
+| Advanced workflows | In progress | [0006](../specs/0006-advanced-workflows.md) |
 
 ## Everyday controls
 
@@ -48,8 +49,23 @@ The user requested DisplayBuddy-style functionality in a separate Advanced tab. 
 - [x] Add model, store and subprocess regression coverage.
 - [x] Complete native verification, screenshots and documentation. [Results and limits](../reviews/2026-10-10-advanced-controls.md).
 - [x] Publish [PR #6](https://github.com/albert2704/display-mini/pull/6). Its required macOS check tracks the latest CI result.
-- [ ] Merge PR #6.
+- [x] Merge [PR #6](https://github.com/albert2704/display-mini/pull/6).
+
+## Advanced workflows
+
+The user delegated the next functionality update and agent orchestration. Spec 0006 covers local preset schedules, selected participants for linked brightness, and timed Keep Displays Awake sessions. The existing Advanced tab groups these workflows above individual monitor controls.
+
+- [x] Record behavior, value sources and ownership in spec 0006.
+- [x] Build timed awake sessions and fake power backend coverage (AC-5).
+- [x] Complete selected brightness membership and schedule integration (AC-2, AC-3, AC-4).
+- [x] Run the integrated regression suite and independent review (AC-6).
+- [x] Verify native controls and a short power assertion; capture updated screenshots (AC-1, AC-6). [Results and limits](../reviews/2026-10-15-advanced-workflows.md).
+- [x] Update the user guides, limitations, feature research and unreleased changelog.
+- [x] Publish [PR #7](https://github.com/albert2704/display-mini/pull/7). Its required macOS check tracks the latest CI result.
+- [ ] Merge PR #7 after review.
+
+Code in `Sources/DisplayCore/BrightnessLinkSelection.swift`, `Sources/DisplayCore/PresetSchedule.swift`, `Sources/DisplayMini/KeepAwakeController.swift`, `Sources/DisplayMini/PresetAutomationController.swift`, their views and DisplayStore integration. Integrated and native checks are complete; PR #7 awaits review and merge.
 
 ## Deferred
 
-Media-key interception, preset schedules, preset resolution/connection changes, and network-controlled displays.
+Media-key interception, sunrise/sunset and connection-triggered schedules, named brightness groups, following system brightness changes, preset resolution/connection changes, and network-controlled displays.
