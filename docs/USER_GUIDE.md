@@ -7,6 +7,7 @@
 3. Open the sliders button in the footer to save your current levels as a preset.
 4. Open the keyboard button, choose an action, click **Record Shortcut**, and press a combination containing Control or Command.
 5. Review the captured keys and click **Save**. Point at the screen you want to control before using its shortcut.
+6. Choose **Advanced** to select which screens share brightness, start a timed awake session, or schedule a saved preset.
 
 [![Captioned walkthrough of Display Mini controls, presets, and shortcut recording](media/walkthrough.gif)](media/walkthrough.mp4)
 
@@ -75,18 +76,49 @@ Writes are briefly debounced to avoid flooding the monitor while dragging. DDC w
 
 ## Advanced tab
 
-Choose **Advanced** at the top of the menu bar panel. **Displays** returns to the usual sliders. Recovery, messages and any Keep/Revert countdown remain visible on both tabs.
+Choose **Advanced** at the top of the menu bar panel. The cards appear in this order: **Link brightness**, **Keep Displays Awake**, **Preset schedules**, then the individual monitor controls. Scroll to reach the lower cards. **Displays** returns to the usual sliders. Recovery, messages and any Keep/Revert countdown remain visible on both tabs.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="media/advanced-dark.png">
-  <img src="media/advanced.png" width="300" alt="Advanced display controls with linked brightness, refresh rate, contrast and input source">
+  <img src="media/advanced.png" width="300" alt="Advanced tab with brightness linking and additional display workflows">
 </picture>
 
 ### Linked brightness
 
-Turn on **Link brightness** to apply subsequent brightness slider or shortcut edits in Display Mini to all ready connected screens. Enabling it does not immediately change any screen. The preference survives relaunch and starts off by default.
+Turn on **Link brightness**, then choose who participates using **Apply to**:
 
-Each screen receives the same app percentage, using its own hardware or software brightness method. Matching percentages is not a calibrated match in physical luminance. Screens that are detecting controls or running an advanced operation are skipped with a message. Changes made through macOS, another app or monitor buttons are not watched. Presets and recovery retain their independent behavior.
+* **All screens** shares subsequent brightness edits with every ready connected screen, including newly connected screens. This is the initial selection and preserves the behavior of existing installations.
+* **Selected screens** shows a checkbox for each identified screen. Select at least two to share brightness between them. An empty selection links nothing. An edit made on an unchecked screen changes that screen only.
+
+The master switch starts off by default. The switch, selection mode and selected screens survive relaunch. Enabling the switch or changing the selection does not immediately change brightness. Offline selected screens remain listed so you can remove them or keep them for the next connection. A shortened identity appears when their names are unavailable.
+
+Each participant receives the same app percentage, using its own hardware or software brightness method. Matching percentages is not a calibrated match in physical luminance. Screens that are busy detecting controls, writing values or running an advanced operation are skipped with a message. Changes made through macOS, another app or monitor buttons are not watched. Presets and recovery retain their independent behavior.
+
+If the saved selection cannot be read, sharing pauses and the original data is kept. **Reset Selection** backs it up locally and starts with an empty **Selected screens** list. Choose the screens you want before linking again.
+
+### Keep Displays Awake
+
+Choose **15 minutes**, **30 minutes** or **60 minutes**, then **Start**. The card shows the time remaining and a **Stop** button. This prevents displays from dimming or sleeping because the Mac is idle, using a public macOS power assertion.
+
+The session ends when its timer expires, when you click Stop, when the Mac sleeps or when Display Mini quits. It is always off at launch and never resumes an old session after waking. macOS also receives its own timeout, so the assertion expires even if the app cannot process its timer.
+
+This does not override closing the lid or manual sleep, wake an already sleeping display, or reconnect a disconnected screen. If macOS rejects starting or stopping the session, the card shows an error. A failed start stays inactive. If an active session cannot stop, try **Stop** again; its automatic timeout remains in place.
+
+### Preset schedules
+
+Save a brightness/volume preset from the footer's **Presets** button first. In **Advanced**, click **+** beside **Preset schedules**. Choose a **Preset**, set **Local time**, and choose **Every day**, **Weekdays** or **Weekends** under **Repeat**, then click **Save**. New schedules start disabled so you can review them before turning on the row's switch. Use the pencil to edit or the trash button to delete. You can keep up to 12 schedules.
+
+<img src="media/schedule-editor.png" width="300" alt="Preset schedule editor with a preset, local time, recurrence, Cancel and Save">
+
+Schedules use your Mac's current local time and run only while Display Mini is running and the Mac is awake; the panel can be closed. They do not launch the app or wake the Mac. Missed times after launch, wake, a timezone change or a processing gap longer than 90 seconds are skipped. A newly saved schedule does not run retroactively within its creation minute. A local time skipped by a daylight saving transition is skipped too; a repeated local time does not run the schedule twice.
+
+Each schedule is handled at most once per local calendar date. Editing or toggling it does not reset that date. After moving the clock backward, the schedule waits for a date later than its last handled date. If several schedules are due together, only the first eligible schedule starts; the others are skipped for that occurrence. Use different times if you want separate presets to run.
+
+A schedule is skipped if its preset was deleted, no saved screens are connected, controls are busy or resolution recovery is unresolved. It does not retry later that day. A missing preset stays visible so you can choose a replacement or delete the schedule. Rename a preset without changing its identity and the schedule follows its new name; deleting and recreating a preset creates a different identity.
+
+**Started** means the preset executor accepted the request, not that every monitor confirmed a write. The result updates when application completes or fails. Scheduled presets use the same sequential writes, matching rules, failure reporting and recovery interruption as manually applied presets. Their levels remain independent of linked brightness.
+
+Schedules and their occurrence records stay on this Mac and survive relaunch. Unreadable or unsupported saved data pauses scheduling and remains untouched until you choose **Back Up and Reset Schedules**. This creates an empty schedule library, preserves the original data locally and keeps your presets.
 
 ### Refresh rate
 
@@ -220,4 +252,4 @@ Recovery is best effort. A physically unplugged monitor must be reattached. Ambi
 
 ## Scope
 
-The preview has no brightness/volume media key remapping, automatic updates, DDC power-off command, rotation, mirroring configuration, virtual displays, or scheduling. It focuses on the controls above.
+The preview has no brightness/volume media key remapping, automatic updates, DDC power-off command, rotation, mirroring configuration, virtual displays, sunrise/sunset automation, or connection-triggered presets. Schedules change only saved brightness and volume while the app is running and awake.

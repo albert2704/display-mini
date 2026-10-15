@@ -9,6 +9,13 @@ flowchart TD
   Store --> Native[NativeDisplays]
   Store --> DDC[Serial DDCClient queue]
   Store --> Dim[DimmingWindows]
+  Store --> Schedules[PresetAutomationController]
+  Schedules --> Executor[Existing preset executor]
+  Executor --> DDC
+  Executor --> Native
+  Executor --> Dim
+  Store --> Awake[KeepAwakeController]
+  Awake --> Power[IOKit timed power assertion]
   Native --> CG[CoreGraphics display configuration]
   Native --> DS[DisplayServices brightness]
   Native --> SL[SkyLight connection management]
@@ -26,8 +33,13 @@ No server, network request, account, or external runtime is involved. The app is
 | `Sources/DisplayMini/AppMain.swift` | App lifecycle, status item, popover, duplicate instance handling, shortcut dispatch and preference subscription. |
 | `Sources/DisplayMini/PanelView.swift` | Display cards, control bindings, DDC settings, resolution confirmation, footer. |
 | `Sources/DisplayMini/DisplaySettingsView.swift` | Custom screen name editor and available/saved resolution stars. |
-| `Sources/DisplayMini/AdvancedView.swift` | Linked brightness, refresh menus, contrast and confirmed input actions. |
+| `Sources/DisplayMini/AdvancedView.swift` | Brightness participant selection, workflow cards, refresh menus, contrast and confirmed input actions. |
 | `Sources/DisplayCore/AdvancedControls.swift` | Advanced probe validation, common input codes and exact refresh geometry selection. |
+| `Sources/DisplayCore/BrightnessLinkSelection.swift` | Versioned all/selected brightness membership, canonical UUID validation and storage bounds. |
+| `Sources/DisplayCore/PresetSchedule.swift` | Schedule library validation, recurrence and strict calendar matching, daily occurrence ledger. |
+| `Sources/DisplayMini/PresetAutomationController.swift` | Schedule persistence, timer evaluation, eligibility checks, consumption and execution status. |
+| `Sources/DisplayMini/PresetAutomationView.swift` | Schedule rows and create/edit sheet, enable/delete actions, missing-preset and storage states. |
+| `Sources/DisplayMini/KeepAwakeController.swift`, `KeepAwakeView.swift` | Timed idle-sleep assertion ownership, countdown, failure handling and session controls. |
 | `Sources/DisplayCore/DisplayPersonalization.swift` | Validated names and favorite descriptors, schema and storage limits. |
 | `Sources/DisplayMini/ShortcutPreferences.swift` | Validated bindings, supported physical keys, modifier mapping and defaults. |
 | `Sources/DisplayMini/ShortcutController.swift` | Carbon registration lifecycle, validated hotkey IDs, per-action conflict reports. |
@@ -78,13 +90,37 @@ Subprocess output is read through a nonblocking pipe and limited to 64 KiB. A de
 
 ## Advanced controls
 
-`PanelView` switches between Displays and Advanced while keeping recovery, messages and mode confirmation outside the scroll area. `linkedBrightnessEnabled` is a local boolean, off by default. Public `setBrightness` fans manual edits out to ready connected devices; the private write path used by presets and recovery does not. Each device retains its own write revision, method and failure handling. The setting is not an observer of macOS or other apps' changes.
+`PanelView` switches between Displays and Advanced while keeping recovery, messages and mode confirmation outside the scroll area. Advanced presents brightness participants, Keep Displays Awake and preset schedules before the monitor cards.
+
+`linkedBrightnessEnabled` remains the master switch and is off by default. `brightnessLinkSelection` stores a schema-1 `BrightnessLinkSelection` with `all` or `selected` mode and up to 64 canonical display UUIDs. Absent selection data preserves all-screen linking for existing installations. Selected mode links only explicit members; an empty set links nothing, and unplugging does not remove membership. Invalid JSON, an unsupported schema or a wrong preference type pauses fanout until an explicit reset backs up the original value and selects an empty set. Existing backups are retained with a UUID suffix on later resets.
+
+Public `setBrightness` always handles the directly targeted screen through its normal guard. It fans out only if that source participates and linking is enabled. Targets must participate, be connected and have settled reads, no active writes or advanced operation, no reconciliation requirement and no pending volume edit. Pending brightness edits deliberately coalesce to the newest value. Skipped busy targets produce a message; changing membership alone performs no hardware operation. The private write path used by presets and recovery stays independent. Each device retains its own write revision, method and failure handling. Linking does not observe macOS or other apps' brightness changes.
 
 `probe-advanced` reads contrast (`0x12`) and input (`0x60`) independently without expanding the normal two-control probe. Its schema validates UUID, timing, transport, attempt counts and ranges. Contrast requires a positive maximum; input is noncontinuous and allows maximum zero. Current input zero does not identify a source and never enables switching. DDCClient keeps all operations on its existing serial queue with the same subprocess bounds.
 
 The store checks device membership, capability, connection, busy state and a separate advanced revision before accepting results. Refresh, sleep, recovery and configuration changes invalidate cached advanced readings. Contrast sends on slider commit, verifies readback and rolls the displayed value back after a failed write. Input sends only after the UI confirmation, uses a fixed common-code allowlist, and deliberately reports command delivery rather than verification because changing inputs may sever DDC. It clears cached state after either outcome. A built-in screen disabled by the app must be restored first.
 
 Refresh choices use FavoriteResolution descriptors without saving favorites. Exact logical and pixel dimensions stay fixed; millihertz identity deduplicates equivalent rates. Selection resolves fresh display identity and mode geometry before calling the existing resolution transaction and Keep/Revert UI.
+
+## Preset schedules
+
+`DisplayStore` owns `PresetAutomationController` and supplies weakly captured providers for saved presets, readiness and the existing `applyPreset` executor. The controller owns no monitor writer. Its schema-1 library permits up to 12 unique schedule IDs, each referencing a preset UUID, local hour/minute, daily/weekday/weekend recurrence and enabled flag. New schedules start disabled. A missing preset remains visible and can be retargeted or its schedule deleted.
+
+The production timer evaluates every 15 seconds with two seconds of tolerance on the common run loop. Injected clock and calendar providers allow deterministic tests. Evaluation looks for occurrences crossed since the previous tick; launch, wake, timezone/calendar changes, a reversed clock or a gap longer than 90 seconds reset that baseline instead of catching up. Strict calendar matching skips nonexistent daylight-saving times and chooses the first repeated time. Weekends follow the current calendar. Saving or enabling a rule sets its eligibility baseline, so it cannot fire retroactively within the current minute.
+
+`presetScheduleOccurrences` is a separate schema-1 ledger from schedule configuration. It stores one Gregorian civil-date high-water mark per schedule UUID, using the current timezone. A date at or below that mark is consumed, including after a clock reversal or relaunch. Editing or toggling a rule retains the mark; deletion prunes its history. Every due occurrence is consumed and saved before callbacks run. Rules are ordered by due time and then editor order; only the first eligible rule in an evaluation starts. Missing presets, busy controls and unmatched screens are skipped without retry.
+
+Store readiness also rejects sleep, shutdown and unresolved resolution recovery. The existing preset executor retains sequential writes, verification, skipped controls and reconciliation. The controller records Started only when dispatching; the store's final completion and cancellation paths call `completeActivePreset` to report the outcome and free the controller for later rules. The scheduling controller never bypasses this executor with its own writes or retries.
+
+Both schedule keys reject malformed bytes, unsupported schemas and wrong preference types. Invalid data remains untouched and execution pauses until an explicit backup/reset. Reset copies both original values to their backup keys, using a UUID suffix to preserve earlier backups. `startMonitoring: false` skips automatic scheduling; tests can inject isolated defaults and a controller with a manual clock. Sleep suspends evaluation before canceling display edits, wake resets its baseline, and shutdown invalidates the timer before ending active operations.
+
+## Keep Displays Awake
+
+`KeepAwakeController` owns one public IOKit `PreventUserIdleDisplaySleep` assertion for a 15, 30 or 60 minute session. `IOPMAssertionCreateWithProperties` supplies the name, level, timeout and `TimeoutActionRelease`, so macOS can end the session even if the app timer stops. A one-second common-run-loop timer updates the visible countdown from monotonic system uptime rather than wall-clock time. Sessions are never persisted and start off at app launch.
+
+Stop, expiry, sleep and shutdown explicitly release the owned assertion; deinitialization also attempts cleanup. Replacement first releases the existing assertion, and a failed creation never claims an active session. If release fails before the deadline, ownership remains visible so Stop can retry and replacement cannot leak another assertion. After the deadline the OS timeout permits cleanup of an already-expired ID. Backend and uptime injection let tests exercise these paths without real power assertions.
+
+This assertion prevents idle display sleep and does not override lid closure or manual sleep, reconnect a screen, or light an already-off display. It does not change brightness, resolution or monitor power settings.
 
 ## Everyday controls
 
@@ -132,12 +168,18 @@ Domain: `dev.albert.DisplayMini` in local UserDefaults.
 | `software.<UUID>` | Fraction. | Per-display dimming state. |
 | `displayPresets` | Schema-1 JSON with names, IDs, screen UUIDs/names and brightness/volume. | Named local snapshots. |
 | `displayPresetsBackup` | Previous unreadable payload, created only on explicit reset. | Recoverable local backup. |
+| `linkedBrightnessEnabled` | Boolean, defaults to false. | Master switch for app-originated brightness linking. |
+| `brightnessLinkSelection` | Schema-1 JSON with all/selected mode and canonical display UUIDs. | Persist participating screens independently of the master switch. |
+| `brightnessLinkSelectionBackup`, `brightnessLinkSelectionBackup.<UUID>` | Original unreadable preference values, created on explicit reset. | Preserve failed selection data without overwriting earlier backups. |
+| `presetSchedules` | Schema-1 JSON with schedule/preset UUIDs, hour, minute, recurrence and enabled flag. | Persist up to 12 local schedules. |
+| `presetScheduleOccurrences` | Schema-1 map from schedule UUID to the latest consumed Gregorian date. | Prevent duplicate execution after edits, clock reversal or relaunch. |
+| `presetSchedulesBackup`, `presetScheduleOccurrencesBackup` and their `.<UUID>` variants | Original schedule/history values, created on explicit reset. | Preserve unreadable data and earlier backups. |
 | `volumeBeforeMute.<UUID>` | Last confirmed positive monitor volume. | Unmute after app restart. |
 | `shortcutBindings`, `shortcutBindingsBackup` | Schema-1 JSON action/key/modifier bindings; optional unreadable-data backup. | Persist editable shortcuts; preserve invalid data before reset/save. |
 | `everydayShortcutsEnabled` | Boolean, defaults to true. | Enable everyday hotkeys independently of recovery. |
 | `resolutionRecovery` | UUID and previous mode ID, logical size, pixel width, refresh. | Recover an unconfirmed mode after failure or restart. |
 
-The app does not upload these records. Monitor serials and UUIDs can identify local hardware and should be redacted from public reports. Synthetic values are used in tests.
+The app does not upload these records. Keep Displays Awake has no stored session. Monitor serials and UUIDs can identify local hardware and should be redacted from public reports. Synthetic values are used in tests.
 
 ## Boundaries and limitations
 

@@ -1,6 +1,6 @@
 # Feature research
 
-Reviewed 2026-10-10. This comparison uses public product documentation as inspiration. It does not imply feature parity, shared implementation, or tested compatibility with every monitor those apps support.
+Reviewed 2026-10-15. This comparison uses public product documentation as inspiration. It does not imply feature parity, shared implementation, or tested compatibility with every monitor those apps support.
 
 ## Inspiration used in this update
 
@@ -22,17 +22,32 @@ Mute is implemented as confirmed volume zero with last-volume restore through th
 ## Practical candidates for later
 
 * Wake settling and per-display retry policy, to address monitors that become ready later than macOS.
-* Selected-screen synchronization groups, following system brightness changes, and preset scheduling.
+* Named synchronization groups and following brightness changes made through macOS or another app.
+* Sunrise/sunset schedules, connection triggers and wake settling for automation.
 * Carefully scoped media-key support.
 * Manual resolution of duplicate monitor identities, only after a stable port mapping can be tested across reconnects.
 
-These are candidates, not promises or implemented features. Implemented features are listed above; broader automation remains outside this update.
+These are candidates, not promises or implemented features. The bounded local schedules and selected screen linking described below are included in the current implementation.
 
 ## Advanced controls
 
 The user requested more DisplayBuddy-style functionality in an Advanced tab. [DisplayBuddy's expanded controls](https://displaybuddy.app/docs/getting-started) and [sync feature](https://displaybuddy.app/) informed contrast, input switching and optional linked brightness. [BetterDisplay](https://github.com/waydabber/BetterDisplay) also lists input, synchronization and refresh controls. Display Mini implements a bounded subset: standard DDC contrast/input, app-originated brightness edits across ready screens, and existing macOS refresh variants with Keep/Revert.
 
 Input codes are common choices, not a monitor capability inventory. Input zero does not establish a current source. Contrast support was read successfully from the development LG monitor, but its standard input read returned zero, so input switching is disabled there. No vendor specific or Wi-Fi protocol was copied or added.
+
+## Advanced workflows
+
+The next Advanced update takes three small workflows from broader display utilities and implements them locally:
+
+| Reference | Useful idea | Display Mini implementation |
+| --- | --- | --- |
+| [DisplayBuddy schedules](https://displaybuddy.app/docs/schedules) | Apply saved display settings at useful times of day. | Up to 12 preset schedules with a local time and every day, weekday or weekend recurrence. Rules start disabled and run only while the app is running and awake. |
+| [DisplayBuddy feature guide](https://displaybuddy.app/blog/2024-04-14/ultimate-guide-to-displaybuddy) and [BetterDisplay feature comparison](https://github.com/waydabber/BetterDisplay/wiki/List-of-free-and-Pro-features) | Synchronization benefits from choosing which displays participate. | Keep the existing All screens behavior and add Selected screens. Only app brightness edits originating from a participant reach the other ready participants. |
+| [BetterDisplay feature comparison](https://github.com/waydabber/BetterDisplay/wiki/List-of-free-and-Pro-features) and [Apple idle display sleep assertion](https://developer.apple.com/documentation/iokit/kiopmassertiontypepreventuseridledisplaysleep) | Keep displays available during a presentation or reading session. | Explicit 15, 30 or 60 minute sessions using a public IOKit assertion, a countdown and Stop, with an independent OS timeout and cleanup on sleep and quit. |
+
+These are Display Mini implementation choices. The comparison does not claim another app uses the same scheduling, synchronization or power management internals. Schedules reuse confirmed preset writes, skip missed or busy occurrences, and prevent repeating a handled date after a clock reversal. They do not wake the Mac, launch the app, use network services or add permissions.
+
+Selected screen linking stores stable identities, keeps offline participants and leaves presets independent. It does not mirror changes made outside Display Mini or calibrate physical luminance. Keep Displays Awake prevents idle sleep only; it does not override a closed lid, manual sleep or an unplugged monitor. Implementation and acceptance criteria are recorded in [spec 0006](specs/0006-advanced-workflows.md).
 
 ## Cable removal recovery investigation
 

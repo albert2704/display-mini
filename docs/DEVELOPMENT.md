@@ -14,6 +14,9 @@ Use an Apple Silicon Mac with Command Line Tools and Swift 5.9 or newer. The app
 | Output | Purpose |
 | --- | --- |
 | `.build/checks/ControlChecks` | Standalone logic test executable. |
+| `.build/checks/StoreChecks` | Store, shortcut and workflow checks with substituted hardware. |
+| `.build/checks/ProcessChecks` | Bounded DDC subprocess checks with temporary fixtures. |
+| `.build/checks/ProtocolChecks` | Objective-C helper protocol checks without monitor I/O. |
 | `.build/release/DisplayMini` | Compiled application executable. |
 | `Vendor/m1ddc` | Compiled monitor helper. |
 | `dist/Display Mini.app` | Complete local app bundle. |
@@ -59,6 +62,18 @@ Four additional model scenarios cover personalization names, separate screen ide
 
 Advanced controls add three model scenarios for probes, input codes and exact refresh geometry; five store scenarios for contrast rollback, input delivery/recovery guards, stale operations, linked edits/persistence and preset isolation; and real DDCClient subprocess fixtures proving that input sends do not attempt readback while contrast does. A zero current input must not enable switching or suppress valid contrast support.
 
+Advanced workflows add these checks to the same runners:
+
+| File | Coverage |
+| --- | --- |
+| `Tests/DisplayCoreTests/BrightnessSelectionTests.swift` | All-screen migration, selected membership, empty selection, canonical identity and malformed/unsupported storage. |
+| `Tests/DisplayCoreTests/ScheduleTests.swift` | Three scenarios for library bounds and validation, recurrence/strict DST matching, and daily history with clock reversal and invalid dates. |
+| `Tests/DisplayStoreTests/AutomationTests.swift` | Six scenarios for consumption before dispatch, execution completion, missing/busy/simultaneous rules, startup and sleep gaps, edits, date reversal, relaunch, timezone/DST and storage recovery. |
+| `Tests/DisplayStoreTests/KeepAwakeTests.swift` | Four scenarios for OS timeout/release properties, assertion ownership, expiry/lifecycle and creation/release failure handling. The backend is fake. |
+| `Tests/DisplayStoreTests/WorkflowStoreTests.swift` | Five scenarios for selected source/target behavior, fail-closed preferences and backups, busy targets, recovery guards, and scheduled preset outcomes through the actual store. |
+
+The scheduled-execution integration case advances an injected clock and completes fake DDC writes to verify success, failed writes, interruption, reconciliation and a later schedule. It checks the bridge between controller status and the existing preset executor. Use `presetDefaults`, `automationController` and `keepAwakeController` injection when a test needs isolated persistence, manual time or a fake power backend. `startMonitoring: false` skips automatic observation and timers; it does not by itself replace a power backend if a test explicitly calls Start. The store runner compiles both workflow controllers explicitly, so keep `scripts/test.sh` in sync when adding dependencies.
+
 ## Manual hardware validation
 
 For an explicitly authorized read-only hardware check, the bundled helper accepts `--delay-ms 50 display <UUID> probe` (or 150 for Slow). It returns schema 1 JSON. This internal output includes the requested UUID; use the app's **Copy Report** for public issue reports. Detection sends Get VCP requests and never Set VCP commands.
@@ -82,7 +97,11 @@ Perform these checks only on a setup where display changes are authorized and an
 | Advanced detection | Detect performs only reads, contrast/input report independently, input zero leaves switching unavailable. |
 | Contrast | Release the slider, verify the actual monitor change and readback; a failed write restores the displayed value. |
 | Input | Confirm only on an authorized test setup, check physical source change and return using monitor buttons. Cancel must issue no command; sent does not mean confirmed. |
-| Linked brightness | Toggle alone changes no levels. Slider/shortcut edits affect ready screens, while presets retain independent levels. Relaunch preserves the toggle. |
+| Linked brightness | Master toggle and participant edits alone change no levels. All mode retains existing behavior; Selected mode fans out only from included sources to ready included targets. Empty selection links nothing, disconnected membership survives, and presets retain independent levels. Relaunch preserves mode and members. |
+| Schedule editor | Create, edit, enable, disable and delete a rule; new rules start disabled. Check missing presets, empty state, local time and recurrence, persistence and the 12-rule limit. |
+| Schedule execution | On an authorized setup, a due enabled rule uses the saved preset; status changes from Started only after completion. Busy/recovery states skip it without retry, and simultaneous rules start at most one preset. |
+| Schedule lifecycle | Quit/relaunch or sleep across a due time produces no catch-up. Keep deterministic clock/DST cases in automated tests; do not change the host clock to exercise them. |
+| Keep Displays Awake | Start shows a countdown and named assertion; Stop removes it. Sleep/quit ends ownership, relaunch starts off, and a short backend smoke test verifies OS timeout independently of the controller timer. |
 | Refresh rate | List only the current geometry; select another rate, verify Keep/Revert and no size or density change. |
 | Response timing | Switching Standard/Slow changes the reported wait to 50/150 ms and starts read-only detection. |
 | Diagnostics | Brightness and volume show separate results, attempts, ranges and the last check time. |
@@ -97,6 +116,8 @@ Perform these checks only on a setup where display changes are authorized and an
 | Failure during recovery | Original recovery record survives, and new previews do not overwrite it silently. |
 
 Also check keyboard navigation, long display names, the DDC panel, and both macOS appearances. Hosted CI cannot replace these checks.
+
+Keep Displays Awake can be checked without writing monitor settings: inspect the named Display Mini assertion with `pmset -g assertions`, then stop the session and confirm it disappears. On 2026-10-15, a separate native backend smoke check created a two-second assertion and observed automatic OS release after approximately three seconds with no controller timer running. That proves timeout ownership on the tested host; it does not establish end-to-end idle-sleep behavior on every supported macOS version. Keep this smoke check separate from the default fake-backend suite.
 
 ## GitHub Actions
 

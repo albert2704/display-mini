@@ -63,7 +63,7 @@ extension ShortcutRecorder {
         NSApplication.shared.setActivationPolicy(.prohibited)
         defer { DocumentationDefaults.shared.removePersistentDomain(forName: DocumentationDefaults.domain) }
         let output = URL(fileURLWithPath: CommandLine.arguments[1])
-        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared, personalizationDefaults: DocumentationDefaults.shared, advancedDefaults: DocumentationDefaults.shared)
+        let store = DisplayStore(startMonitoring: false, shortcutDefaults: DocumentationDefaults.shared, personalizationDefaults: DocumentationDefaults.shared, advancedDefaults: DocumentationDefaults.shared, presetDefaults: DocumentationDefaults.shared)
         store.seedDocumentation()
         try render(PanelView(store: store), size: .init(width: 300, height: 450), name: "panel", output: output)
         try render(PresetsView(store: store), size: .init(width: 380, height: 440), name: "presets", output: output)
@@ -92,14 +92,24 @@ extension ShortcutRecorder {
         external.advancedProbe = AdvancedDDCProbe.parse(Data(advancedReport.utf8), expectedUUID: external.id, timing: .standard)
         external.contrast = 0.7
         precondition(external.advancedProbe != nil)
+        store.linkedBrightnessEnabled = true
+        store.setBrightnessLinkMode(.selected)
+        for device in store.displays { store.setBrightnessLinkMember(device.id, included: true) }
+        store.startAutomations() // Timers are disabled in this fixture; no schedule is evaluated.
+        precondition(store.automations.save(presetID: store.presetLibrary.presets[0].id, hour: 9, minute: 0, recurrence: .weekdays))
+        precondition(store.automations.save(presetID: store.presetLibrary.presets[1].id, hour: 20, minute: 30, recurrence: .daily))
         try render(PanelView(documentingAdvanced: store), size: .init(width: 300, height: 660), name: "advanced", output: output)
         try render(PanelView(documentingAdvanced: store), size: .init(width: 300, height: 660), name: "advanced-dark", output: output, dark: true)
-        print("Rendered 11 native UI examples with isolated sample data.")
+        try render(PresetScheduleEditor(controller: store.automations, presets: store.presetLibrary.presets, schedule: store.automations.library.schedules[0]),
+                   size: .init(width: 300, height: 230), name: "schedule-editor", output: output)
+        store.shutdown()
+        print("Rendered 12 native UI examples with isolated sample data.")
     }
 
     @MainActor static func render<V: View>(_ view: V, size: NSSize, name: String, output: URL, dark: Bool = false) throws {
         let content = view.environment(\.colorScheme, dark ? .dark : .light).environment(\.controlActiveState, .active)
             .transaction { $0.animation = nil; $0.disablesAnimations = true }
+            .frame(width: size.width, height: size.height, alignment: .top)
             .background(Color(nsColor: .windowBackgroundColor))
         let host = NSHostingView(rootView: content)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
