@@ -1,7 +1,7 @@
 # 0007. Built in panel recovery
 
 **Date**: 2026-10-16
-**Status**: In Progress, physical unplug validation pending
+**Status**: In Progress, one physical unplug check passed; omitted panel fallback validation pending
 
 ## Summary
 
@@ -68,11 +68,17 @@ Critical checks: invalid targets and arguments perform no power call (AC-2, AC-3
 1. Implement exact capture and the bounded wake helper, AC-2, AC-3, AC-4.
 2. Integrate asynchronous recovery, ownership confirmation and callback guards, AC-4, AC-5, AC-6.
 3. Run model, store and subprocess checks; build and launch the app, AC-2 through AC-6.
-4. Repeat physical cable removal with persistent diagnostics, AC-1. Keep the PR in draft until this passes.
+4. Repeat physical cable removal with persistent diagnostics, AC-1. Confirm which recovery path ran before treating the omitted panel fallback as verified.
+
+## Validation record
+
+On 2026-10-16 at 12:41 ICT, the user tested commit `2b92d8c` on macOS 27.0 (26A428), with the lid open and the built in panel disconnected in Display Mini. The user confirmed that the MacBook screen came on before reconnecting the external cable. This is one successful physical AC-1 check.
+
+At `05:41:18Z`, the trace recorded zero physical external links, an accepted enable transaction, and normal hardware identity resolution with the saved built in ID still present in the private display list. Ownership cleared after recovery. No panel wake or captured ID reconnect ran during this check. It therefore confirms the observed unplug outcome on this setup, but does not establish that the new fallback resolves the earlier failure where discovery omitted the panel. Keep that validation gap explicit in the draft PR.
 
 ## Consequences
 
-This requires additional private macOS APIs and a direct internal service mapping. Unsupported mappings fail closed. Captures cannot survive an app restart. CG IDs are usually stable, not a permanent identity contract; kernel continuity and observed reuse guards constrain this exception but cannot prove behavior on every OS version. Automated checks do not establish AC-1 and the implementation remains under physical validation.
+This requires additional private macOS APIs and a direct internal service mapping. Unsupported mappings fail closed. Captures cannot survive an app restart. CG IDs are usually stable, not a permanent identity contract; kernel continuity and observed reuse guards constrain this exception but cannot prove behavior on every OS version. Automated checks do not establish physical recovery. One normal discovery unplug check passed; the omitted panel fallback remains under physical validation.
 
 ## References
 

@@ -119,6 +119,8 @@ Perform these checks only on a setup where display changes are authorized and an
 
 Also check keyboard navigation, long display names, the DDC panel, and both macOS appearances. Hosted CI cannot replace these checks.
 
+On 2026-10-16 at 12:41 ICT, the user confirmed that commit `2b92d8c` restored the built in MacBook screen before the external cable was reconnected, with the lid open, on macOS 27.0 (26A428). The trace recorded `physicalLinks=0`, normal hardware identity resolution with the saved panel still listed, an accepted enable transaction, and subsequent ownership removal. No kernel wake or captured ID reconnect ran. This is one successful unplug check, not physical verification of the new fallback for an omitted panel. See the [recovery validation record](specs/0007-built-in-panel-recovery.md#validation-record).
+
 Keep Displays Awake can be checked without writing monitor settings: inspect the named Display Mini assertion with `pmset -g assertions`, then stop the session and confirm it disappears. On 2026-10-15, a separate native backend smoke check created a two-second assertion and observed automatic OS release after approximately three seconds with no controller timer running. That proves timeout ownership on the tested host; it does not establish end-to-end idle-sleep behavior on every supported macOS version. Keep this smoke check separate from the default fake-backend suite.
 
 ## GitHub Actions
