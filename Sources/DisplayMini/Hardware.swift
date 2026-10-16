@@ -22,6 +22,9 @@ final class NativeDisplays {
         return values
     }()
     private var lastConnectionIdentityTrace: String?
+    // Only targets identified immediately before this process disables them.
+    // Never reconstruct these from a persisted display ID after relaunch.
+    private var builtInReconnectTargets: [String: BuiltInReconnectTarget] = [:]
 
     private func symbol<T>(_ handle: UnsafeMutableRawPointer?, _ names: [String], as: T.Type) -> T? {
         guard let handle else { return nil }
@@ -121,7 +124,7 @@ final class NativeDisplays {
             // a later re-enumeration that could miss a transient failure.
             func fields(_ value: DisplayIdentity?) -> String {
                 guard let value else { return "unknown" }
-                return "\(value.vendor != 0)/\(value.model != 0)/\(value.serial != 0)"
+                return "\(value.vendor != 0 && value.vendor != .max)/\(value.model != 0 && value.model != .max)/\(value.serial != .max)"
             }
             let observations = ids.map { id -> String in
                 let hardware = candidates.first { $0.displayID == id }
@@ -160,7 +163,10 @@ final class NativeDisplays {
     }
 
     func setConnected(uuid: String, enabled: Bool) throws {
-        guard let id = currentID(for: uuid, connectionChange: enabled) else { throw DisplayFailure.message("Display is no longer attached.") }
+        let resolved = currentID(for: uuid, connectionChange: enabled)
+        let recoveryID = resolved == nil && enabled ? builtInReconnectID(for: uuid) : nil
+        guard let id = resolved ?? recoveryID else { throw DisplayFailure.message("Display is no longer attached.") }
+        let reconnectTarget = enabled ? nil : BuiltInReconnectTarget(uuid: uuid, currentUUID: rawUUID(id), identity: identity(id), builtinFlag: CGDisplayIsBuiltin(id))
         guard let set = symbol(skyLight, ["SLSConfigureDisplayEnabled", "CGSConfigureDisplayEnabled"], as: SetEnabled.self) else {
             throw DisplayFailure.message("Display connection control is unavailable on this macOS version.")
         }
@@ -176,6 +182,23 @@ final class NativeDisplays {
         }
         let finish = CGCompleteDisplayConfiguration(config, .forSession)
         guard finish == .success else { throw DisplayFailure.message("macOS rejected the connection change (\(finish.rawValue)).") }
+        if !enabled { builtInReconnectTargets[uuid] = reconnectTarget }
+    }
+
+    private func builtInReconnectID(for uuid: String) -> CGDirectDisplayID? {
+        guard let target = builtInReconnectTargets[uuid] else {
+            traceConnectionIdentity("direct builtin recovery: no target captured in this process")
+            return nil
+        }
+        let current = identity(target.identity.displayID)
+        let currentUUID = rawUUID(target.identity.displayID)
+        let builtinFlag = CGDisplayIsBuiltin(target.identity.displayID)
+        let owned = (UserDefaults.standard.stringArray(forKey: "ownedDisconnects") ?? []).contains(uuid)
+        let result = target.resolve(enable: true, owned: owned, currentUUID: currentUUID, current: current, builtinFlag: builtinFlag)
+        let kind = builtinFlag == 1 ? "builtin" : (builtinFlag == 0 ? "external" : "unknown")
+        let uuidState = currentUUID == nil ? "absent" : (currentUUID == uuid ? "exact" : "other")
+        traceConnectionIdentity("direct builtin recovery: owned=\(owned) kind=\(kind) uuid=\(uuidState) vendorValid=\(current.vendor != 0 && current.vendor != .max) modelValid=\(current.model != 0 && current.model != .max) serialValid=\(current.serial != .max) hardwareMatches=\(target.identity.matchesHardware(current)) result=\(result == nil ? "rejected" : "validated")")
+        return result
     }
 
     func setMode(_ id: CGDirectDisplayID, mode: CGDisplayMode, permanent: Bool = false) throws {
