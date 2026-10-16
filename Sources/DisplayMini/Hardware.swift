@@ -21,6 +21,7 @@ final class NativeDisplays {
               let values = try? JSONDecoder().decode([String: DisplayIdentity].self, from: data) else { return [:] }
         return values
     }()
+    private var lastConnectionIdentityTrace: String?
 
     private func symbol<T>(_ handle: UnsafeMutableRawPointer?, _ names: [String], as: T.Type) -> T? {
         guard let handle else { return nil }
@@ -56,11 +57,15 @@ final class NativeDisplays {
     }
 
     func displayIDs() -> [CGDirectDisplayID] {
+        displayList().ids
+    }
+
+    private func displayList() -> (ids: [CGDirectDisplayID], source: String) {
         var ids = [UInt32](repeating: 0, count: 64), count: UInt32 = 0
         if let list = symbol(skyLight, ["SLSGetDisplayList", "CGSGetDisplayList"], as: GetList.self),
-           list(64, &ids, &count) == .success { return Array(ids.prefix(Int(min(count, 64)))) }
-        guard CGGetOnlineDisplayList(64, &ids, &count) == .success else { return [] }
-        return Array(ids.prefix(Int(min(count, 64))))
+           list(64, &ids, &count) == .success { return (Array(ids.prefix(Int(min(count, 64)))), "private") }
+        guard CGGetOnlineDisplayList(64, &ids, &count) == .success else { return ([], "unavailable") }
+        return (Array(ids.prefix(Int(min(count, 64)))), "online")
     }
 
     private func identity(_ id: CGDirectDisplayID) -> DisplayIdentity {
@@ -86,10 +91,58 @@ final class NativeDisplays {
     }
 
     func currentID(for uuid: String) -> CGDirectDisplayID? {
-        let ids = displayIDs()
-        if let exact = ids.first(where: { rawUUID($0) == uuid }) { return exact }
-        guard let expected = knownIdentities[uuid] else { return nil }
-        return DisplayIdentity.resolve(expected, among: ids.filter { rawUUID($0) == nil }.map(identity))
+        currentID(for: uuid, connectionChange: nil)
+    }
+
+    private func currentID(for uuid: String, connectionChange: Bool?) -> CGDirectDisplayID? {
+        let list = displayList(), ids = list.ids
+        let expected = knownIdentities[uuid]
+        var exactStates: [UInt32: String] = [:], fallbackStates: [UInt32: String] = [:]
+        func uuidState(_ value: String?) -> String { value == nil ? "absent" : (value == uuid ? "exact" : "other") }
+        if let exact = ids.first(where: { id in
+            let value = rawUUID(id)
+            exactStates[id] = uuidState(value)
+            return value == uuid
+        }) {
+            if let enabled = connectionChange { traceConnectionIdentity("enable=\(enabled) source=\(list.source) count=\(ids.count) result=exactUUID") }
+            return exact
+        }
+        let candidates: [DisplayIdentity]
+        if expected != nil {
+            candidates = ids.filter { id in
+                let value = rawUUID(id)
+                fallbackStates[id] = uuidState(value)
+                return value == nil
+            }.map(identity)
+        } else { candidates = [] }
+        let result = expected.flatMap { DisplayIdentity.resolve($0, among: candidates) }
+        if let enabled = connectionChange {
+            // Record the UUID reads and hardware values used by this lookup, not
+            // a later re-enumeration that could miss a transient failure.
+            func fields(_ value: DisplayIdentity?) -> String {
+                guard let value else { return "unknown" }
+                return "\(value.vendor != 0)/\(value.model != 0)/\(value.serial != 0)"
+            }
+            let observations = ids.map { id -> String in
+                let hardware = candidates.first { $0.displayID == id }
+                let matches = expected.flatMap { saved in hardware.map { "\(saved.vendor == $0.vendor)/\(saved.model == $0.model)/\(saved.serial == $0.serial)" } } ?? "unobserved"
+                let builtInFlag = CGDisplayIsBuiltin(id)
+                let kind = builtInFlag == 1 ? "builtin" : (builtInFlag == 0 ? "external" : "unknown")
+                return "{savedID=\(expected?.displayID == id) kind=\(kind) online=\(CGDisplayIsOnline(id) == 1) active=\(CGDisplayIsActive(id) == 1) uuid=\(exactStates[id] ?? "unobserved")/\(fallbackStates[id] ?? "unobserved") fields=\(fields(hardware)) matches=\(matches)}"
+            }.joined(separator: " ")
+            let matches = expected.map { saved in candidates.filter { saved.matchesHardware($0) }.count } ?? 0
+            traceConnectionIdentity("enable=\(enabled) source=\(list.source) count=\(ids.count) known=\(expected != nil) savedFields=\(fields(expected)) savedInList=\(expected.map { ids.contains($0.displayID) } ?? false) eligible=\(candidates.count) matches=\(matches) result=\(result == nil ? "unresolved" : "hardware") \(observations)")
+        }
+        return result
+    }
+
+    private func traceConnectionIdentity(_ event: String) {
+        guard event != lastConnectionIdentityTrace else { return }
+        lastConnectionIdentityTrace = event
+        // Contains flags and counts only, never UUIDs, IDs, serials or names.
+        var events = UserDefaults.standard.stringArray(forKey: "connectionIdentityTrace") ?? []
+        events.append("\(ISO8601DateFormatter().string(from: Date())) \(event)")
+        UserDefaults.standard.set(Array(events.suffix(40)), forKey: "connectionIdentityTrace")
     }
 
     func brightness(_ id: CGDirectDisplayID) -> Double? {
@@ -107,7 +160,7 @@ final class NativeDisplays {
     }
 
     func setConnected(uuid: String, enabled: Bool) throws {
-        guard let id = currentID(for: uuid) else { throw DisplayFailure.message("Display is no longer attached.") }
+        guard let id = currentID(for: uuid, connectionChange: enabled) else { throw DisplayFailure.message("Display is no longer attached.") }
         guard let set = symbol(skyLight, ["SLSConfigureDisplayEnabled", "CGSConfigureDisplayEnabled"], as: SetEnabled.self) else {
             throw DisplayFailure.message("Display connection control is unavailable on this macOS version.")
         }

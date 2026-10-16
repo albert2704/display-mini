@@ -154,6 +154,8 @@ WindowServer can retain an active external screen after its cable has been remov
 
 `recoveryTrace` retains at most 40 local decision and result entries, with timestamps, state flags and counts. `recoveryHeartbeat` records the last timer tick. Neither contains UUIDs, serials, screen names, registry paths or raw registry payloads, and neither is uploaded. These records help distinguish missed events, suspended polling and rejected reconnection calls.
 
+`connectionIdentityTrace` retains up to 40 distinct consecutive lookup summaries for connection changes. It records the enumeration source, saved identity availability, list membership, both UUID comparison passes and hardware field availability/equality used by the lookup. Supplemental built-in, online and active flags are sampled immediately afterward. Field triples follow vendor/model/serial order. Entries contain counts and flags, not display IDs, UUIDs, names or hardware values. This diagnostic does not relax the identity rules or establish a fix for intermittent recovery failures.
+
 ## Stored data
 
 Domain: `dev.albert.DisplayMini` in local UserDefaults.
@@ -163,6 +165,7 @@ Domain: `dev.albert.DisplayMini` in local UserDefaults.
 | `displayIdentities` | JSON map of UUID to display ID, vendor, model, serial. | Match disconnected devices when macOS omits UUID. |
 | `ownedDisconnects` | Array of display UUIDs. | Retry reconnection on recovery or next launch. |
 | `recoveryTrace`, `recoveryHeartbeat` | Bounded state summaries and last timer timestamp. | Diagnose automatic recovery locally without device identifiers. |
+| `connectionIdentityTrace` | Up to 40 connection lookup summaries with flags, counts and timestamps. | Distinguish missing identity data, excluded UUIDs and ambiguous recovery candidates locally. |
 | `forceSoftware.<UUID>` | Boolean. | Per-display brightness preference. |
 | `ddcTiming.<UUID>` | `standard` or `slow`. | Per-display response timing; unknown values use Standard. |
 | `software.<UUID>` | Fraction. | Per-display dimming state. |
