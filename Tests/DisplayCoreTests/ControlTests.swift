@@ -38,6 +38,7 @@ private func XCTAssertGreaterThan(_ a: Double, _ b: Double, file: StaticString =
         BrightnessSelectionTests.run()
         ScheduleTests.run()
         PanelWakeBudgetTests.run()
+        ExplicitRecoveryTests.run()
         print("Passed 19 control tests (\(checks) assertions).")
     }
 

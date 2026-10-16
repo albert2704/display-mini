@@ -16,6 +16,8 @@ enum RecoveryStoreTests {
         }
         missingPanelWakeAndOwnership()
         rejectsOtherFailuresAndUnavailableCapture()
+        await manualRestoreFinishesLayoutWorkBeforeWake()
+        await manualConnectRetriesThroughNormalResolution()
         await rejectsStaleWakeCompletion()
         await sleepDuringConnectionDoesNotLeaveBusyState()
         print("Passed recovery store scenarios (wake routing, single flight, ownership, stale completion and sleep during connection).")
@@ -102,6 +104,49 @@ enum RecoveryStoreTests {
             precondition(store.native.displayListReads == reads && store.native.connectionCalls.count == transactions)
             stop(store)
         }
+    }
+
+    @MainActor private static func manualRestoreFinishesLayoutWorkBeforeWake() async {
+        let store = fixture()
+        defer { stop(store) }
+        let other = "00000000-0000-4000-8000-00000000D003"
+        UserDefaults.standard.set([uuid, other], forKey: "ownedDisconnects")
+        var wakeStarted = false, transactions = 0, normalResolutionAvailable = false
+        store.native.connectionHandler = { target, _ in
+            transactions += 1
+            if !normalResolutionAvailable {
+                precondition(!wakeStarted, "Restore must finish its synchronous layout requests before starting a helper")
+                if target == uuid { throw DisplayFailure.notAttached }
+            }
+        }
+        store.native.wakeStartHandler = { _ in
+            precondition(transactions == 2, "Every owned display must be processed before the helper starts")
+            wakeStarted = true
+        }
+        store.restoreDisplays()
+        precondition(transactions == 2 && store.native.wakeRequests.count == 1 && store.controlsBusy)
+        precondition(store.message == nil, "A scheduled manual wake must not publish a premature recovery error")
+        store.native.wakeRequests[0].finish("accepted")
+        precondition(transactions == 2, "Helper completion cannot directly enter a layout transaction")
+        normalResolutionAvailable = true
+        try! await Task.sleep(nanoseconds: 700_000_000)
+        precondition(transactions == 3 && store.native.connectionCalls.last?.uuid == uuid,
+                     "Deferred recovery must return to the normal UUID-resolving connection path")
+        precondition(ownsPanel)
+    }
+
+    @MainActor private static func manualConnectRetriesThroughNormalResolution() async {
+        let store = fixture()
+        defer { stop(store) }
+        store.toggleConnection(store.displays[0], enabled: true)
+        precondition(store.native.connectionCalls.count == 1 && store.native.wakeRequests.count == 1)
+        precondition(store.controlsBusy)
+        store.native.wakeRequests[0].finish("accepted")
+        precondition(store.native.connectionCalls.count == 1)
+        store.native.connectionHandler = nil
+        try! await Task.sleep(nanoseconds: 700_000_000)
+        precondition(store.native.connectionCalls.count == 2 && store.native.connectionCalls.last?.enabled == true)
+        precondition(ownsPanel, "Manual reconnect also waits for online and active confirmation")
     }
 
     @MainActor private static func sleepDuringConnectionDoesNotLeaveBusyState() async {

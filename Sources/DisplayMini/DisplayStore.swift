@@ -138,6 +138,7 @@ struct DisplayMode: Identifiable {
     private var recoveryActivity: NSObjectProtocol?
     private var physicalRecoveryAvailable = false
     private var panelWakeInFlight: UUID?
+    private var explicitBuiltInRecovery: Set<String> = []
     private var connectionRevision = 0
     private var pendingResolution: (uuid: String, original: CGDisplayMode, requested: CGDisplayMode)?
     private var ownedDisconnects: Set<String> {
@@ -296,6 +297,7 @@ struct DisplayMode: Identifiable {
                 }
                 if CGDisplayIsActive(displayID) != 0 {
                     ownedDisconnects.remove(uuid)
+                    explicitBuiltInRecovery.remove(uuid)
                     native.forgetBuiltInWakeTarget(uuid: uuid)
                     if device.builtIn, let error = automaticRecoveryError {
                         if message == error { message = nil }
@@ -328,6 +330,7 @@ struct DisplayMode: Identifiable {
             return
         }
         let owned = ownedDisconnects
+        explicitBuiltInRecovery.formIntersection(owned)
         guard displays.contains(where: { $0.builtIn && owned.contains($0.id) }) else {
             traceRecovery("no owned built-in row: owned=\(owned.count) rows=\(displays.count)")
             return
@@ -347,7 +350,8 @@ struct DisplayMode: Identifiable {
         let links = native.activeExternalLinkCount
         let candidates = BuiltInDisplayRecovery.candidates(states, owned: owned, lidClosed: lid,
             sleeping: sleeping, connectionBusy: connectionBusy,
-            physicalExternalLost: physicalRecoveryAvailable && links == 0)
+            physicalExternalLost: physicalRecoveryAvailable && links == 0,
+            explicitlyRequested: explicitBuiltInRecovery)
         traceRecovery("check: lid=\(lid.map(String.init) ?? "unknown") activeExternal=\(states.filter { !$0.builtIn && $0.online && $0.active }.count) physicalLinks=\(links.map(String.init) ?? "unknown") hardwareRecovery=\(physicalRecoveryAvailable) ownedPanels=\(states.filter { $0.builtIn && owned.contains($0.uuid) }.count) candidates=\(candidates.count)")
         guard !candidates.isEmpty, Date() >= nextRecoveryAttempt else { return }
         nextRecoveryAttempt = Date().addingTimeInterval(2)
@@ -968,10 +972,12 @@ struct DisplayMode: Identifiable {
         invalidateAdvancedControls(device)
         connectionRevision += 1
         let operation = connectionRevision
+        if enabled, device.builtIn, ownedDisconnects.contains(device.id) { explicitBuiltInRecovery.insert(device.id) }
         device.revision += 1; device.brightnessRevision += 1; device.volumeRevision += 1
         device.pendingBrightness?.cancel(); device.pendingBrightness = nil
         device.pendingVolume?.cancel(); device.pendingVolume = nil
         if !enabled {
+            explicitBuiltInRecovery.remove(device.id)
             if device.builtIn {
                 let externalCount = native.displayIDs().filter { CGDisplayIsBuiltin($0) == 0 && CGDisplayIsOnline($0) != 0 && CGDisplayIsActive($0) != 0 }.count
                 // Only trust hardware loss when these ports cover the active replacement screens.
@@ -1070,11 +1076,14 @@ struct DisplayMode: Identifiable {
         guard panelWakeInFlight == nil else { return }
         connectionRevision += 1; connectionBusy = false
         cancelControlEdits()
+        var missingPanels: [String] = []
         for uuid in ownedDisconnects {
+            if displays.contains(where: { $0.id == uuid && $0.builtIn }) { explicitBuiltInRecovery.insert(uuid) }
             do { try native.setConnected(uuid: uuid, enabled: true) }
             catch {
-                if case DisplayFailure.notAttached = error, startPanelWake(uuid: uuid) { continue }
-                message = error.localizedDescription
+                if case DisplayFailure.notAttached = error, explicitBuiltInRecovery.contains(uuid) {
+                    missingPanels.append(uuid)
+                } else { message = error.localizedDescription }
             }
         }
         revertResolution()
@@ -1084,6 +1093,13 @@ struct DisplayMode: Identifiable {
             if device.connected && device.brightness < ControlMath.softwareThreshold { writeBrightness(device, 0.6) }
         }
         dimming.removeAll(); scheduleRefresh()
+        // Finish synchronous layout and resolution restoration before launching
+        // any asynchronous panel wake. Its completion resumes fresh discovery.
+        for uuid in missingPanels {
+            if startPanelWake(uuid: uuid) { break }
+            let error = "Could not restore the built-in display. Recovery will retry. \(DisplayFailure.notAttached.localizedDescription)"
+            automaticRecoveryError = error; message = error
+        }
     }
 
     func shutdown() {

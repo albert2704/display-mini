@@ -21,6 +21,7 @@ enum DisplayFailure: LocalizedError {
     var connectionCalls: [(uuid: String, enabled: Bool)] = []
     var connectionHandler: ((String, Bool) throws -> Void)?
     var wakeAllowed = false
+    var wakeStartHandler: ((String) -> Void)?
     var wakeChecks = 0
     var wakeRequests: [WakeRequest] = []
     var forgottenWakeTargets: [String] = []
@@ -36,6 +37,7 @@ enum DisplayFailure: LocalizedError {
     func wakeBuiltInIfNeeded(uuid: String, completion: @escaping (String) -> Void) -> Bool {
         wakeChecks += 1
         guard wakeAllowed else { return false }
+        wakeStartHandler?(uuid)
         wakeRequests.append(.init(uuid: uuid, finish: completion))
         return true
     }

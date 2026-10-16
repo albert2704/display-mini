@@ -335,14 +335,16 @@ public struct DisplayConnectionState: Sendable {
 }
 
 public enum BuiltInDisplayRecovery {
-    /// Only restore a panel disabled by this app, after its replacement disappears.
+    /// Restore an owned panel after replacement loss or an explicit restore request.
     /// An unknown lid state is not permission to override clamshell behavior.
     public static func candidates(_ displays: [DisplayConnectionState], owned: Set<String>,
                                   lidClosed: Bool?, sleeping: Bool, connectionBusy: Bool,
-                                  physicalExternalLost: Bool = false) -> [String] {
-        guard !owned.isEmpty, lidClosed == false, !sleeping, !connectionBusy,
-              physicalExternalLost || !displays.contains(where: { !$0.builtIn && $0.online && $0.active }) else { return [] }
-        return displays.filter { $0.builtIn && owned.contains($0.uuid) && !($0.online && $0.active) }
+                                  physicalExternalLost: Bool = false,
+                                  explicitlyRequested: Set<String> = []) -> [String] {
+        guard !owned.isEmpty, lidClosed == false, !sleeping, !connectionBusy else { return [] }
+        let replacementLost = physicalExternalLost || !displays.contains(where: { !$0.builtIn && $0.online && $0.active })
+        return displays.filter { $0.builtIn && owned.contains($0.uuid) && !($0.online && $0.active) &&
+            (replacementLost || explicitlyRequested.contains($0.uuid)) }
             .map(\.uuid)
     }
 }
