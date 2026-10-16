@@ -38,6 +38,26 @@ struct BuiltInPanelTarget: Equatable {
         IOObjectRelease(service)
         return true
     }
+
+    /// The registry mapping can veto a reused CG ID even when CG's UUID is
+    /// empty. After ordinary disconnect, CoreDisplay's kCGDisplayUUID can differ
+    /// from the CG UUID captured while online, so those are not interchangeable.
+    func currentDisplayBinding(displayID: UInt32) -> Bool? {
+        guard displayID != 0, displayID != .max else { return false }
+        guard let framework = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY) else { return nil }
+        defer { dlclose(framework) }
+        typealias CreateInfo = @convention(c) (UInt32) -> Unmanaged<CFDictionary>?
+        guard let pointer = dlsym(framework, "CoreDisplay_DisplayCreateInfoDictionary") else { return nil }
+        let createInfo = unsafeBitCast(pointer, to: CreateInfo.self)
+        guard let info = createInfo(displayID)?.takeRetainedValue() as NSDictionary? else { return nil }
+        guard let location = info["IODisplayLocation"] as? String else { return nil }
+        let service = IORegistryEntryCopyFromPath(kIOMainPortDefault, location as CFString)
+        guard service != 0 else { return false }
+        defer { IOObjectRelease(service) }
+        var entryID: UInt64 = 0
+        guard IORegistryEntryGetRegistryEntryID(service, &entryID) == KERN_SUCCESS else { return nil }
+        return entryID == registryEntryID
+    }
 }
 
 enum BuiltInPanelWake {
