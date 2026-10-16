@@ -1,17 +1,45 @@
 import AppKit
 import DisplayCore
 
+enum DisplayFailure: LocalizedError {
+    case notAttached, message(String)
+    var errorDescription: String? {
+        switch self {
+        case .notAttached: return "Display is no longer attached."
+        case .message(let text): return text
+        }
+    }
+}
+
 // Compile the real store against these hardware substitutes. No physical display writes.
 @MainActor final class NativeDisplays {
+    struct WakeRequest { let uuid: String; let finish: (String) -> Void }
     var canConnect = true
     var lidClosed: Bool? = false
     var activeExternalLinkCount: Int? = 1
-    func displayIDs() -> [CGDirectDisplayID] { [] }
+    var displayListReads = 0
+    var connectionCalls: [(uuid: String, enabled: Bool)] = []
+    var connectionHandler: ((String, Bool) throws -> Void)?
+    var wakeAllowed = false
+    var wakeChecks = 0
+    var wakeRequests: [WakeRequest] = []
+    var forgottenWakeTargets: [String] = []
+    func displayIDs() -> [CGDirectDisplayID] { displayListReads += 1; return [] }
     func uuid(_ id: CGDirectDisplayID) -> String { "unused" }
     func currentID(for uuid: String) -> CGDirectDisplayID? { nil }
     func brightness(_ id: CGDirectDisplayID) -> Double? { nil }
     func setBrightness(_ id: CGDirectDisplayID, value: Double) throws {}
-    func setConnected(uuid: String, enabled: Bool) throws {}
+    func setConnected(uuid: String, enabled: Bool) throws {
+        connectionCalls.append((uuid, enabled))
+        try connectionHandler?(uuid, enabled)
+    }
+    func wakeBuiltInIfNeeded(uuid: String, completion: @escaping (String) -> Void) -> Bool {
+        wakeChecks += 1
+        guard wakeAllowed else { return false }
+        wakeRequests.append(.init(uuid: uuid, finish: completion))
+        return true
+    }
+    func forgetBuiltInWakeTarget(uuid: String) { forgottenWakeTargets.append(uuid) }
     func setMode(_ id: CGDirectDisplayID, mode: CGDisplayMode, permanent: Bool = false) throws {}
 }
 @MainActor final class DimmingWindows {
@@ -49,6 +77,7 @@ enum DDCFailure: LocalizedError { case rejected; var errorDescription: String? {
         await WorkflowStoreTests.run()
         AutomationTests.run()
         KeepAwakeTests.run()
+        await RecoveryStoreTests.run()
         print("Passed 5 store orchestration scenarios (sequential apply, canceled write reconciliation, mute rollback, slow recovery, shortcut guards).")
     }
     static let uuid = "00000000-0000-4000-8000-00000000F001"

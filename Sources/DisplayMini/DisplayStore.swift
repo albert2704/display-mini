@@ -117,7 +117,7 @@ struct DisplayMode: Identifiable {
     private var presetSteps: [PresetPlan.Step] = []
     private var presetSkipped = 0
     private var deviceObservers = Set<AnyCancellable>()
-    var controlsBusy: Bool { connectionBusy || pendingResolutionName != nil || applyingPresetName != nil }
+    var controlsBusy: Bool { connectionBusy || panelWakeInFlight != nil || pendingResolutionName != nil || applyingPresetName != nil }
     var canSavePreset: Bool {
         presetStorageError == nil && !controlsBusy && !sleeping && activeCount > 0 && displays.filter(\.connected).allSatisfy {
             !$0.reading && !$0.writing && !$0.advancedBusy && !$0.needsControlRead && $0.pendingBrightness == nil && $0.pendingVolume == nil
@@ -137,6 +137,7 @@ struct DisplayMode: Identifiable {
     private var lastRecoveryTrace: String?
     private var recoveryActivity: NSObjectProtocol?
     private var physicalRecoveryAvailable = false
+    private var panelWakeInFlight: UUID?
     private var connectionRevision = 0
     private var pendingResolution: (uuid: String, original: CGDisplayMode, requested: CGDisplayMode)?
     private var ownedDisconnects: Set<String> {
@@ -179,7 +180,7 @@ struct DisplayMode: Identifiable {
         guard startMonitoring else { return }
         // Recover only connections this app owns, including after an unexpected exit.
         for uuid in ownedDisconnects {
-            do { try native.setConnected(uuid: uuid, enabled: true); ownedDisconnects.remove(uuid) }
+            do { try native.setConnected(uuid: uuid, enabled: true) }
             catch { message = "A display needs reconnecting. Use Restore Displays or reconnect its cable." }
         }
         recoverSavedResolution()
@@ -197,6 +198,8 @@ struct DisplayMode: Identifiable {
         observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.sleeping = true
+                self?.connectionRevision += 1
+                self?.connectionBusy = false
                 self?.automations.suspend()
                 self?.keepAwake.suspend()
                 self?.cancelControlEdits()
@@ -293,6 +296,7 @@ struct DisplayMode: Identifiable {
                 }
                 if CGDisplayIsActive(displayID) != 0 {
                     ownedDisconnects.remove(uuid)
+                    native.forgetBuiltInWakeTarget(uuid: uuid)
                     if device.builtIn, let error = automaticRecoveryError {
                         if message == error { message = nil }
                         automaticRecoveryError = nil
@@ -319,8 +323,8 @@ struct DisplayMode: Identifiable {
     }
 
     private func recoverBuiltInIfNeeded() {
-        guard !shuttingDown, !sleeping, !connectionBusy else {
-            traceRecovery("paused: shutdown=\(shuttingDown) sleep=\(sleeping) busy=\(connectionBusy)")
+        guard !shuttingDown, !sleeping, !connectionBusy, panelWakeInFlight == nil else {
+            traceRecovery("paused: shutdown=\(shuttingDown) sleep=\(sleeping) busy=\(connectionBusy) panelWake=\(panelWakeInFlight != nil)")
             return
         }
         let owned = ownedDisconnects
@@ -354,11 +358,33 @@ struct DisplayMode: Identifiable {
                 // Keep ownership until a later refresh confirms that the panel is active.
                 scheduleRefresh()
             } catch {
+                if case DisplayFailure.notAttached = error, startPanelWake(uuid: uuid) { return }
                 let error = "Could not automatically restore the built-in display. Recovery will retry. \(error.localizedDescription)"
                 automaticRecoveryError = error; message = error
                 traceRecovery("enable failed: \(error)")
             }
         }
+    }
+
+    private func startPanelWake(uuid: String) -> Bool {
+        guard !shuttingDown, !sleeping, !connectionBusy, panelWakeInFlight == nil,
+              ownedDisconnects.contains(uuid), native.lidClosed == false else { return false }
+        let operation = connectionRevision, token = UUID()
+        let started = native.wakeBuiltInIfNeeded(uuid: uuid) { [weak self] status in
+            guard let self, self.panelWakeInFlight == token else { return }
+            self.panelWakeInFlight = nil
+            guard !self.shuttingDown, !self.sleeping, self.connectionRevision == operation,
+                  self.ownedDisconnects.contains(uuid), self.native.lidClosed == false else { return }
+            self.traceRecovery("panel wake \(status); awaiting normal display discovery")
+            // Allow the driver to settle, then recompute recovery eligibility.
+            // A successful power request alone never authorizes a layout write.
+            self.scheduleRefresh()
+        }
+        if started {
+            panelWakeInFlight = token
+            traceRecovery("panel wake requested")
+        }
+        return started
     }
 
     private func traceRecovery(_ event: String) {
@@ -962,12 +988,17 @@ struct DisplayMode: Identifiable {
                 self.refresh()
                 if let device {
                     if device.connected != enabled { device.error = "macOS did not change the connection. Reconnect the cable if needed." }
-                    else if enabled { self.ownedDisconnects.remove(device.id) }
+                    // refresh clears ownership only after online AND active.
                 }
             }
         } catch {
             connectionBusy = false; device.error = error.localizedDescription
-            if !enabled { ownedDisconnects.remove(device.id) }
+            if !enabled {
+                ownedDisconnects.remove(device.id)
+                native.forgetBuiltInWakeTarget(uuid: device.id)
+            } else if case DisplayFailure.notAttached = error, startPanelWake(uuid: device.id) {
+                device.error = nil
+            }
             updateRecoveryTimer()
         }
     }
@@ -1036,11 +1067,15 @@ struct DisplayMode: Identifiable {
     }
 
     func restoreDisplays() {
+        guard panelWakeInFlight == nil else { return }
         connectionRevision += 1; connectionBusy = false
         cancelControlEdits()
         for uuid in ownedDisconnects {
-            do { try native.setConnected(uuid: uuid, enabled: true); ownedDisconnects.remove(uuid) }
-            catch { message = error.localizedDescription }
+            do { try native.setConnected(uuid: uuid, enabled: true) }
+            catch {
+                if case DisplayFailure.notAttached = error, startPanelWake(uuid: uuid) { continue }
+                message = error.localizedDescription
+            }
         }
         revertResolution()
         if pendingResolution == nil { recoverSavedResolution() }
@@ -1053,6 +1088,7 @@ struct DisplayMode: Identifiable {
 
     func shutdown() {
         shuttingDown = true
+        connectionRevision += 1
         automations.shutdown()
         keepAwake.shutdown()
         refreshWork?.cancel()
@@ -1061,7 +1097,12 @@ struct DisplayMode: Identifiable {
         recoveryActivity = nil
         cancelControlEdits()
         for uuid in ownedDisconnects {
-            if (try? native.setConnected(uuid: uuid, enabled: true)) != nil { ownedDisconnects.remove(uuid) }
+            try? native.setConnected(uuid: uuid, enabled: true)
+            // An accepted transaction can still be pending when the app exits.
+            // Leave ownership for startup unless the OS already confirms it.
+            if let id = native.currentID(for: uuid), CGDisplayIsOnline(id) == 1, CGDisplayIsActive(id) == 1 {
+                ownedDisconnects.remove(uuid)
+            }
         }
         revertResolution()
         dimming.removeAll()

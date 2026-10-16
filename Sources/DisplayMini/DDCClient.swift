@@ -21,7 +21,7 @@ enum DDCFailure: Error, LocalizedError, Equatable {
 struct DDCCommandRunner {
     let helper: URL
     var timeout: TimeInterval = 3
-    func run(_ arguments: [String]) -> Result<Data, DDCFailure> {
+    func run(_ arguments: [String], acceptingExitCodes: Set<Int32> = [0]) -> Result<Data, DDCFailure> {
         guard FileManager.default.isExecutableFile(atPath: helper.path) else { return .failure(.missingHelper) }
         let process = Process(), pipe = Pipe(), finished = DispatchSemaphore(value: 0)
         process.executableURL = helper; process.arguments = arguments
@@ -58,7 +58,7 @@ struct DDCCommandRunner {
             }
             if !exited { exited = finished.wait(timeout: .now()) == .success }
             if exited && eof {
-                return process.terminationStatus == 0 ? .success(data) : .failure(.commandFailed)
+                return process.terminationReason == .exit && acceptingExitCodes.contains(process.terminationStatus) ? .success(data) : .failure(.commandFailed)
             }
             if count <= 0 {
                 var pollDescriptor = pollfd(fd: descriptor, events: Int16(POLLIN | POLLHUP), revents: 0)

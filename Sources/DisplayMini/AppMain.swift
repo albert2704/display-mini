@@ -69,6 +69,11 @@ import SwiftUI
 
 @main struct DisplayMiniApp {
     @MainActor static func main() {
+        // The short-lived helper exits before creating AppKit or checking for an
+        // already running menu bar app. Its private framebuffer handle dies here.
+        if let status = BuiltInPanelWake.runHelper(arguments: Array(CommandLine.arguments.dropFirst())) {
+            exit(status)
+        }
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         let delegate = AppDelegate()
