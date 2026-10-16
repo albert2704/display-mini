@@ -5,8 +5,14 @@ import DisplayCore
 import IOKit
 
 enum DisplayFailure: LocalizedError {
+    case notAttached
     case message(String)
-    var errorDescription: String? { if case .message(let text) = self { return text }; return nil }
+    var errorDescription: String? {
+        switch self {
+        case .notAttached: return "Display is no longer attached."
+        case .message(let text): return text
+        }
+    }
 }
 
 final class NativeDisplays {
@@ -21,6 +27,18 @@ final class NativeDisplays {
               let values = try? JSONDecoder().decode([String: DisplayIdentity].self, from: data) else { return [:] }
         return values
     }()
+    private var lastConnectionIdentityTrace: String?
+    private struct PanelWakeSession {
+        let target: BuiltInPanelTarget
+        let reconnect: CapturedPanelReconnect
+        let generation = UUID()
+        var budget = PanelWakeBudget()
+        var wakeAccepted = false
+    }
+    // The kernel service is captured while the panel is still positively identified.
+    // It is never reconstructed from a persisted display ID after relaunch.
+    private var panelWakeSessions: [String: PanelWakeSession] = [:]
+    private let panelWakeQueue = DispatchQueue(label: "dev.albert.DisplayMini.panelWake", qos: .userInitiated)
 
     private func symbol<T>(_ handle: UnsafeMutableRawPointer?, _ names: [String], as: T.Type) -> T? {
         guard let handle else { return nil }
@@ -56,11 +74,17 @@ final class NativeDisplays {
     }
 
     func displayIDs() -> [CGDirectDisplayID] {
+        let ids = displayList().ids
+        invalidateReusedPanelIDs(observed: ids)
+        return ids
+    }
+
+    private func displayList() -> (ids: [CGDirectDisplayID], source: String) {
         var ids = [UInt32](repeating: 0, count: 64), count: UInt32 = 0
         if let list = symbol(skyLight, ["SLSGetDisplayList", "CGSGetDisplayList"], as: GetList.self),
-           list(64, &ids, &count) == .success { return Array(ids.prefix(Int(min(count, 64)))) }
-        guard CGGetOnlineDisplayList(64, &ids, &count) == .success else { return [] }
-        return Array(ids.prefix(Int(min(count, 64))))
+           list(64, &ids, &count) == .success { return (Array(ids.prefix(Int(min(count, 64)))), "private") }
+        guard CGGetOnlineDisplayList(64, &ids, &count) == .success else { return ([], "unavailable") }
+        return (Array(ids.prefix(Int(min(count, 64)))), "online")
     }
 
     private func identity(_ id: CGDirectDisplayID) -> DisplayIdentity {
@@ -86,10 +110,59 @@ final class NativeDisplays {
     }
 
     func currentID(for uuid: String) -> CGDirectDisplayID? {
-        let ids = displayIDs()
-        if let exact = ids.first(where: { rawUUID($0) == uuid }) { return exact }
-        guard let expected = knownIdentities[uuid] else { return nil }
-        return DisplayIdentity.resolve(expected, among: ids.filter { rawUUID($0) == nil }.map(identity))
+        currentID(for: uuid, connectionChange: nil)
+    }
+
+    private func currentID(for uuid: String, connectionChange: Bool?) -> CGDirectDisplayID? {
+        let list = displayList(), ids = list.ids
+        invalidateReusedPanelIDs(observed: ids)
+        let expected = knownIdentities[uuid]
+        var exactStates: [UInt32: String] = [:], fallbackStates: [UInt32: String] = [:]
+        func uuidState(_ value: String?) -> String { value == nil ? "absent" : (value == uuid ? "exact" : "other") }
+        if let exact = ids.first(where: { id in
+            let value = rawUUID(id)
+            exactStates[id] = uuidState(value)
+            return value == uuid
+        }) {
+            if let enabled = connectionChange { traceConnectionIdentity("enable=\(enabled) source=\(list.source) count=\(ids.count) result=exactUUID") }
+            return exact
+        }
+        let candidates: [DisplayIdentity]
+        if expected != nil {
+            candidates = ids.filter { id in
+                let value = rawUUID(id)
+                fallbackStates[id] = uuidState(value)
+                return value == nil
+            }.map(identity)
+        } else { candidates = [] }
+        let result = expected.flatMap { DisplayIdentity.resolve($0, among: candidates) }
+        if let enabled = connectionChange {
+            // Record the UUID reads and hardware values used by this lookup, not
+            // a later re-enumeration that could miss a transient failure.
+            func fields(_ value: DisplayIdentity?) -> String {
+                guard let value else { return "unknown" }
+                return "\(value.vendor != 0 && value.vendor != .max)/\(value.model != 0 && value.model != .max)/\(value.serial != .max)"
+            }
+            let observations = ids.map { id -> String in
+                let hardware = candidates.first { $0.displayID == id }
+                let matches = expected.flatMap { saved in hardware.map { "\(saved.vendor == $0.vendor)/\(saved.model == $0.model)/\(saved.serial == $0.serial)" } } ?? "unobserved"
+                let builtInFlag = CGDisplayIsBuiltin(id)
+                let kind = builtInFlag == 1 ? "builtin" : (builtInFlag == 0 ? "external" : "unknown")
+                return "{savedID=\(expected?.displayID == id) kind=\(kind) online=\(CGDisplayIsOnline(id) == 1) active=\(CGDisplayIsActive(id) == 1) uuid=\(exactStates[id] ?? "unobserved")/\(fallbackStates[id] ?? "unobserved") fields=\(fields(hardware)) matches=\(matches)}"
+            }.joined(separator: " ")
+            let matches = expected.map { saved in candidates.filter { saved.matchesHardware($0) }.count } ?? 0
+            traceConnectionIdentity("enable=\(enabled) source=\(list.source) count=\(ids.count) known=\(expected != nil) savedFields=\(fields(expected)) savedInList=\(expected.map { ids.contains($0.displayID) } ?? false) eligible=\(candidates.count) matches=\(matches) result=\(result == nil ? "unresolved" : "hardware") \(observations)")
+        }
+        return result
+    }
+
+    private func traceConnectionIdentity(_ event: String) {
+        guard event != lastConnectionIdentityTrace else { return }
+        lastConnectionIdentityTrace = event
+        // Contains flags and counts only, never UUIDs, IDs, serials or names.
+        var events = UserDefaults.standard.stringArray(forKey: "connectionIdentityTrace") ?? []
+        events.append("\(ISO8601DateFormatter().string(from: Date())) \(event)")
+        UserDefaults.standard.set(Array(events.suffix(40)), forKey: "connectionIdentityTrace")
     }
 
     func brightness(_ id: CGDirectDisplayID) -> Double? {
@@ -107,12 +180,20 @@ final class NativeDisplays {
     }
 
     func setConnected(uuid: String, enabled: Bool) throws {
-        guard let id = currentID(for: uuid) else { throw DisplayFailure.message("Display is no longer attached.") }
+        if !enabled {
+            let active = displayIDs().filter { CGDisplayIsActive($0) == 1 }
+            if !ControlMath.mayDisconnect(isEnabled: true, activeCount: active.count, pending: false) {
+                throw DisplayFailure.message("Keep at least one display connected.")
+            }
+        }
+        let normalID = currentID(for: uuid, connectionChange: enabled)
+        let capturedID = normalID == nil && enabled ? capturedPanelID(for: uuid) : nil
+        guard let id = normalID ?? capturedID else { throw DisplayFailure.notAttached }
+        let wakeTarget = enabled ? nil : BuiltInPanelTarget.capture(displayID: id, expectedUUID: uuid)
+        let reconnect = enabled ? nil : CapturedPanelReconnect(uuid: uuid, currentUUID: rawUUID(id), identity: identity(id), builtinFlag: CGDisplayIsBuiltin(id))
         guard let set = symbol(skyLight, ["SLSConfigureDisplayEnabled", "CGSConfigureDisplayEnabled"], as: SetEnabled.self) else {
             throw DisplayFailure.message("Display connection control is unavailable on this macOS version.")
         }
-        let active = displayIDs().filter { CGDisplayIsActive($0) != 0 }
-        if !ControlMath.mayDisconnect(isEnabled: !enabled, activeCount: active.count, pending: false) { throw DisplayFailure.message("Keep at least one display connected.") }
         var config: CGDisplayConfigRef?
         let start = CGBeginDisplayConfiguration(&config)
         guard start == .success, let config else { throw DisplayFailure.message("Could not start display configuration (\(start.rawValue)).") }
@@ -123,6 +204,101 @@ final class NativeDisplays {
         }
         let finish = CGCompleteDisplayConfiguration(config, .forSession)
         guard finish == .success else { throw DisplayFailure.message("macOS rejected the connection change (\(finish.rawValue)).") }
+        if !enabled {
+            if let wakeTarget, let reconnect { panelWakeSessions[uuid] = PanelWakeSession(target: wakeTarget, reconnect: reconnect) }
+            else { panelWakeSessions.removeValue(forKey: uuid) }
+            if CGDisplayIsBuiltin(id) == 1 || wakeTarget != nil {
+                traceConnectionIdentity("panel wake capture: captured=\(wakeTarget != nil)")
+            }
+        }
+    }
+
+    /// This only wakes the captured kernel panel. Connection recovery separately
+    /// checks normal identity or the guarded, in-memory CG ID captured with it.
+    @discardableResult func wakeBuiltInIfNeeded(uuid: String, completion: @escaping (String) -> Void) -> Bool {
+        let owned = (UserDefaults.standard.stringArray(forKey: "ownedDisconnects") ?? []).contains(uuid)
+        guard owned, lidClosed == false, var session = panelWakeSessions[uuid],
+              session.target.isCurrentlyValid(), let executable = Bundle.main.executableURL,
+              session.budget.begin(now: ProcessInfo.processInfo.systemUptime) else {
+            traceConnectionIdentity("panel wake skipped: owned=\(owned) captured=\(panelWakeSessions[uuid] != nil)")
+            return false
+        }
+        panelWakeSessions[uuid] = session
+        let target = session.target, generation = session.generation
+        traceConnectionIdentity("panel wake started: attempt=\(session.budget.attempts)")
+        panelWakeQueue.async {
+            let result = DDCCommandRunner(helper: executable, timeout: 3).run(
+                ["--wake-built-in-panel", String(target.registryEntryID)], acceptingExitCodes: [0, 2, 3, 4, 5, 6, 7])
+            let status: String
+            switch result {
+            case .success(let data):
+                let report = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let allowed = ["panel wake: request accepted", "panel wake: invalid arguments",
+                    "panel wake: captured internal service unavailable", "panel wake: framework unavailable",
+                    "panel wake: required symbols unavailable", "panel wake: lid is closed or unknown",
+                    "panel wake: open failed", "panel wake: lid changed or unknown", "panel wake: power request failed"]
+                status = allowed.contains(report) ? report : "invalid helper report"
+            case .failure(.timedOut): status = "timed out"
+            case .failure: status = "rejected"
+            }
+            DispatchQueue.main.async {
+                if self.panelWakeSessions[uuid]?.generation == generation {
+                    self.panelWakeSessions[uuid]?.budget.finish()
+                    self.panelWakeSessions[uuid]?.wakeAccepted = status == "panel wake: request accepted"
+                    self.traceConnectionIdentity("panel wake completed: \(status)")
+                }
+                completion(status)
+            }
+        }
+        return true
+    }
+
+    func forgetBuiltInWakeTarget(uuid: String) { panelWakeSessions.removeValue(forKey: uuid) }
+
+    private func invalidateReusedPanelIDs(observed: [UInt32]) {
+        for (uuid, session) in panelWakeSessions where observed.contains(session.reconnect.identity.displayID) {
+            let id = session.reconnect.identity.displayID
+            let binding = session.target.currentDisplayBinding(displayID: id)
+            if session.reconnect.conflicts(currentUUID: rawUUID(id), current: identity(id),
+                builtinFlag: CGDisplayIsBuiltin(id), coreDisplayMatches: binding) {
+                panelWakeSessions.removeValue(forKey: uuid)
+                traceConnectionIdentity("captured panel invalidated: display ID was reused or metadata conflicted")
+            }
+        }
+    }
+
+    private func capturedPanelID(for uuid: String) -> UInt32? {
+        guard var session = panelWakeSessions[uuid], session.wakeAccepted, lidClosed == false else { return nil }
+        let savedID = session.reconnect.identity.displayID
+        var online = [UInt32](repeating: 0, count: 64), active = online
+        var onlineCount: UInt32 = 0, activeCount: UInt32 = 0
+        let list = displayList()
+        guard list.source == "private",
+              CGGetOnlineDisplayList(64, &online, &onlineCount) == .success,
+              CGGetActiveDisplayList(64, &active, &activeCount) == .success else { return nil }
+        let observed = list.ids + online.prefix(Int(min(onlineCount, 64))) + active.prefix(Int(min(activeCount, 64)))
+        invalidateReusedPanelIDs(observed: observed)
+        guard panelWakeSessions[uuid]?.generation == session.generation else { return nil }
+        let currentUUID = rawUUID(savedID), current = identity(savedID), builtinFlag = CGDisplayIsBuiltin(savedID)
+        let binding = session.target.currentDisplayBinding(displayID: savedID)
+        let kernelMatches = session.target.isCurrentlyValid()
+        if !kernelMatches || session.reconnect.conflicts(currentUUID: currentUUID, current: current,
+            builtinFlag: builtinFlag, coreDisplayMatches: binding) {
+            panelWakeSessions.removeValue(forKey: uuid)
+            traceConnectionIdentity("captured panel rejected: kernelMatches=\(kernelMatches) binding=\(binding.map(String.init) ?? "unknown")")
+            return nil
+        }
+        let owned = (UserDefaults.standard.stringArray(forKey: "ownedDisconnects") ?? []).contains(uuid)
+        let result = session.reconnect.resolve(owned: owned, kernelMatches: kernelMatches,
+            wakeAccepted: session.wakeAccepted, isListed: observed.contains(savedID), currentUUID: currentUUID,
+            current: current, builtinFlag: builtinFlag, coreDisplayMatches: binding)
+        // One layout attempt per accepted wake, at most twice per disconnection.
+        if result != nil {
+            session.wakeAccepted = false
+            panelWakeSessions[uuid] = session
+        }
+        traceConnectionIdentity("captured panel reconnect: owned=\(owned) kernelMatches=\(kernelMatches) listed=\(observed.contains(savedID)) binding=\(binding.map(String.init) ?? "unknown") result=\(result == nil ? "rejected" : "captured session")")
+        return result
     }
 
     func setMode(_ id: CGDirectDisplayID, mode: CGDisplayMode, permanent: Bool = false) throws {

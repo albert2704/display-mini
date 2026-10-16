@@ -19,6 +19,12 @@ import DisplayCore
         if case .failure(.missingHelper) = missing {} else { preconditionFailure("Missing helper was not diagnosed") }
         let reject = try helper("reject", "exit 4")
         if case .failure(.commandFailed) = DDCCommandRunner(helper: reject).run([]) {} else { preconditionFailure("Exit status was ignored") }
+        let wakeReport = try helper("wake-report", "printf 'panel wake: open failed\\n'\nexit 6")
+        let report = try DDCCommandRunner(helper: wakeReport).run([], acceptingExitCodes: [0, 6]).get()
+        precondition(String(data: report, encoding: .utf8) == "panel wake: open failed\n")
+        if case .failure(.commandFailed) = DDCCommandRunner(helper: wakeReport).run([]) {} else { preconditionFailure("Wake diagnostics relaxed ordinary DDC exit handling") }
+        let signaled = try helper("signal", "kill -ALRM $$")
+        if case .failure(.commandFailed) = DDCCommandRunner(helper: signaled).run([], acceptingExitCodes: [0, 14]) {} else { preconditionFailure("Signal termination was treated as a normal report") }
         // Bash builtins flood the pipe without leaving a child holding its descriptors.
         let noisy = try helper("noisy", "for ((i=0;i<9000;i++)); do printf '0123456789'; done")
         if case .failure(.oversizedOutput) = DDCCommandRunner(helper: noisy).run([]) {} else { preconditionFailure("Output was not bounded") }
@@ -60,7 +66,7 @@ import DisplayCore
         if case .failure(.unconfirmedWrite) = mismatch {} else { preconditionFailure("Mismatched readback accepted") }
         let commands = try String(contentsOfFile: commandLog, encoding: .utf8)
         precondition(commands == "set:input\nset:contrast\nget:contrast\nset:volume\nget:volume\n")
-        print("Passed 6 helper process scenarios (success, missing, rejection, excessive output, timeout, inherited pipe).")
+        print("Passed 8 helper process scenarios (success, missing, rejection, explicit status reports, signals, excessive output, timeout, inherited pipe).")
         print("Passed input delivery without readback, verified contrast, and mismatched readback checks.")
     }
 }

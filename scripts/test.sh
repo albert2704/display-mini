@@ -23,3 +23,7 @@ xcrun clang -fmodules -fmodules-cache-path="$PWD/.build/clang-cache" -IVendor/he
   Vendor/sources/i2c.m Vendor/sources/ioregistry.m Tests/HelperTests/ProtocolTests.m \
   -o .build/checks/ProtocolChecks
 .build/checks/ProtocolChecks
+xcrun swiftc "${SWIFT_COMPAT[@]}" -parse-as-library \
+  Sources/DisplayMini/BuiltInPanelWake.swift Tests/PanelWakeTests/PanelWakeTests.swift \
+  -o .build/checks/PanelWakeChecks -module-cache-path .build/native-cache
+.build/checks/PanelWakeChecks
